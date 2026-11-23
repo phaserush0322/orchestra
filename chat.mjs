@@ -1,16 +1,24 @@
 // Chat: a conversation with the chat agent (Sonnet by default, see "chat" in flows.json).
-// The chat agent can read the project but not change it. When the user wants work done, it ends its
-// reply with an <orchestra-run> block; the server turns that into a build (flow + skills + brief).
+// The chat agent has Claude Code's full toolset and the enabled connectors. Depending on the chat's
+// mode, risky actions wait for the user's Allow in the app (through approve-mcp.mjs).
+// For bigger jobs it ends its reply with an <orchestra-run> block, which the server turns into a build.
 import { spawn } from 'node:child_process';
 import { config } from './orchestra.mjs';
 
 export const slug = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
 
-export function chatCommand(agent = config.agents[config.chat?.agent ?? 'sonnet']) {
+// ask: commands, edits and anything risky wait for Allow. edits: file edits are automatic, commands ask.
+// full: everything runs without asking. Full access is done by the app's approval hook answering "allow"
+// itself (not the CLI's bypass mode), so publishing tools can still be held for the user.
+export const MODES = { ask: 'manual', edits: 'acceptEdits', full: 'acceptEdits' };
+
+export function chatCommand({ mode = 'ask', settingsFile, mcpConfigFile } = {}, agent = config.agents[config.chat?.agent ?? 'sonnet']) {
   if (!agent || agent.cli !== 'claude') throw new Error('The chat agent must use the claude CLI (see "chat" in flows.json).');
-  // Read-only tools, no MCP servers (faster start), nothing saved: the server keeps the history itself.
-  return `claude -p --model ${agent.model} --output-format stream-json --verbose --include-partial-messages ` +
-         `--tools Read,Glob,Grep --strict-mcp-config --no-session-persistence`;
+  // Nothing saved by the CLI: the server keeps the history itself.
+  return `claude -p --model ${agent.model} --output-format stream-json --verbose --include-partial-messages --no-session-persistence ` +
+         `--permission-mode ${MODES[mode] ?? MODES.ask}` +
+         (mcpConfigFile ? ` --mcp-config "${mcpConfigFile}" --permission-prompt-tool mcp__orchestra__approve` : '') +
+         (settingsFile ? ` --settings "${settingsFile}"` : '');
 }
 
 const RUN_RE = /<orchestra-run>\s*([\s\S]*?)\s*<\/orchestra-run>/;
@@ -32,7 +40,7 @@ export function parseRunBlock(text, { flows = config.flows, skills = [] } = {}) 
 }
 
 // What the chat agent knows each turn: its job, the team, the project, and the conversation so far.
-export function chatPrompt({ message, history = [], project = null, files = [], projects = [], skills = [], running = null }) {
+export function chatPrompt({ message, history = [], project = null, files = [], projects = [], skills = [], running = null, mode = 'ask', connectors = [], cwd = '' }) {
   const flows = Object.entries(config.flows).map(([n, f]) =>
     `- ${n}: ${f.about ?? ''} Steps: ${f.steps.map(s => `${s.name} (${s.agent}, ${config.agents[s.agent]?.model})`).join(' -> ')}`).join('\n');
   const skillList = skills.length
@@ -48,9 +56,12 @@ export function chatPrompt({ message, history = [], project = null, files = [], 
   return `You are the assistant inside Orchestra, an app where the user chats with you and a team of AI agents builds software for them.
 
 HOW YOU WORK
-- Chat like a normal assistant: answer questions, explain code, suggest ideas, help the user decide. Reply in the user's language (they may mix English and Tagalog). Keep replies short and clear; use Markdown.
-- You can read the project's files with Read, Glob and Grep (your working folder is the project). You cannot edit files or run commands. Never claim you changed something yourself.
-- When the user wants something built, created, changed or fixed now, hand it to the build team: say in one or two sentences what you are handing off, then end your reply with exactly one block like this (not inside a code fence):
+- You are a full assistant with Claude Code's tools on the user's Windows computer: read, write, move and delete files in any folder, run shell commands (PowerShell or Bash), install packages, use git (commit, push), search the web, and use the connectors listed below. Do what the user asks directly, the way a capable engineer would, and report what you did.
+- Reply in the user's language (they may mix English and Tagalog). Keep replies short and clear; use Markdown.
+- Permission mode for this chat: ${{ ask: 'ASK FIRST: commands, file changes and other risky actions show the user an Allow/Deny card and wait for them', edits: 'AUTO-ACCEPT EDITS: file edits run directly; commands show the user an Allow/Deny card', full: 'FULL ACCESS: your actions run without asking' }[mode] ?? 'ASK FIRST'}. If the user denies something, do not try to get around it; ask what they want instead.
+- Before anything destructive or hard to undo (deleting files, force-pushing, overwriting work), say what you are about to do. Publish to the public (for example Astrocade publish_game) only when the user explicitly asks for it in this chat.
+- Small changes, questions, file and git work: do them yourself. Big builds (a new game or app, a major feature) go to the build team, because it plans, builds, reviews and makes art.
+- To hand work to the build team: say in one or two sentences what you are handing off, then end your reply with exactly one block like this (not inside a code fence):
 <orchestra-run>
 {"project": "short-kebab-name", "flow": "game", "skills": ["web-game"], "brief": "..."}
 </orchestra-run>
@@ -67,6 +78,10 @@ ${flows}
 SKILLS
 ${skillList}
 
+CONNECTORS (MCP servers you can use; their tools are named mcp__<server>__<tool>. If a tool isn't loaded yet, find it with ToolSearch)
+${connectors.length ? connectors.map(c => `- ${c}`).join('\n') : '(none enabled)'}
+
+WORKING FOLDER: ${cwd}
 THIS CHAT'S PROJECT: ${project ? `"${project}"` : 'none yet (a build will create one)'}
 ${project ? `Files: ${files.slice(0, 80).join(', ') || '(empty)'}${files.length > 80 ? ` and ${files.length - 80} more` : ''}` : `Existing projects: ${projects.join(', ') || '(none)'}`}
 BUILD STATUS: ${running ? `running "${running}"` : 'idle'}
@@ -78,10 +93,20 @@ USER'S NEW MESSAGE
 ${message}`;
 }
 
+// One short line describing a tool call, for the chat ("Bash git push", "Edit src/main.js").
+export function toolSummary(name, input = {}) {
+  const i = input ?? {};
+  const short = (s) => String(s).replace(/\s+/g, ' ').trim().slice(0, 140);
+  const target = i.command ?? i.file_path ?? i.notebook_path ?? i.pattern ?? i.path ?? i.url ?? i.query ?? '';
+  const pretty = String(name).replace(/^mcp__([^_]+(?:_[^_]+)*?)__/, (_, s) => `${s.replace(/^claude_ai_/, '')}: `);
+  const shown = i.command ? short(target) : String(target).split(/[\\/]/).slice(-2).join('/');
+  return `${pretty} ${short(shown)}`.trim();
+}
+
 // Runs one chat turn. Streams events to onEvent: {kind:'delta', text} | {kind:'tool', text}.
 // Returns { child, done } where done resolves to { ok, text, error }.
-export function runChat({ cwd, prompt, onEvent }) {
-  const child = spawn(chatCommand(), { shell: true, cwd });
+export function runChat({ cwd, prompt, onEvent, command = chatCommand() }) {
+  const child = spawn(command, { shell: true, cwd });
   let buf = '', full = '', error = '', stderr = '';
   const add = (t) => { full += t; onEvent({ kind: 'delta', text: t }); };
   const handle = (line) => {
@@ -92,9 +117,7 @@ export function runChat({ cwd, prompt, onEvent }) {
       if (e.type === 'content_block_delta' && e.delta?.type === 'text_delta') add(e.delta.text);
     } else if (m.type === 'assistant') {
       for (const c of m.message?.content ?? []) if (c.type === 'tool_use') {
-        const i = c.input ?? {};
-        const target = i.file_path ?? i.pattern ?? i.path ?? '';
-        onEvent({ kind: 'tool', text: `${c.name} ${String(target).split(/[\\/]/).slice(-2).join('/')}`.trim() });
+        onEvent({ kind: 'tool', text: toolSummary(c.name, c.input) });
       }
     } else if (m.type === 'result' && m.is_error) {
       error = String(m.result || m.subtype || 'The chat agent failed.');

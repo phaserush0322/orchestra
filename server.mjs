@@ -8,8 +8,9 @@ import { resolve, dirname, relative, isAbsolute, extname, join } from 'node:path
 import { fileURLToPath } from 'node:url';
 import { exec, execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { config, planRun, runStep, guidance, listSkills, skillName, skillsDir, killTree } from './orchestra.mjs';
-import { slug, chatPrompt, runChat, parseRunBlock } from './chat.mjs';
+import { config, planRun, runStep, guidance, listSkills, skillName, skillsDir, killTree,
+  loadSettings, saveSettings, permissionRules, writeRuntimeFile, PUBLISH_TOOLS } from './orchestra.mjs';
+import { slug, chatPrompt, runChat, parseRunBlock, chatCommand, MODES, toolSummary } from './chat.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.ORCHESTRA_PORT) || 4545;
@@ -156,6 +157,66 @@ function startRun({ job, project, flow, from, skills = [], sessionId = null }) {
   })();
 }
 
+// ---------- Connectors (MCP servers the claude CLI can see) ----------
+// "claude mcp list" lines look like:  claude.ai Astrocade: https://mcp.astrocade.com/mcp - ✔ Connected
+const STATUS = { '✔': 'connected', '!': 'needs-auth', '✘': 'failed', '-': 'not-configured' };
+export function parseMcpList(text) {
+  const out = [];
+  for (const line of String(text).split(/\r?\n/)) {
+    const m = line.match(/^(.+?): (.*) - ([✔✘!-]) (.+)$/);
+    if (!m) continue;
+    const name = m[1].trim();
+    const source = name.startsWith('claude.ai ') ? 'claude.ai' : name.startsWith('plugin:') ? 'plugin' : 'local';
+    out.push({ name, target: m[2].trim(), status: STATUS[m[3]] ?? 'unknown', detail: m[4].trim(), source });
+  }
+  return out;
+}
+let checkingConnectors = false;
+function refreshConnectors() {
+  if (checkingConnectors) return;
+  checkingConnectors = true;
+  broadcast({ type: 'connectors' });
+  exec('claude mcp list', { cwd: here, timeout: 180000, maxBuffer: 4e6, windowsHide: true }, (err, stdout) => {
+    const servers = parseMcpList(stdout);
+    if (servers.length) {
+      const s = loadSettings();
+      s.connectors = { ...(s.connectors ?? {}), servers, checkedAt: Date.now() };
+      saveSettings(s);
+    }
+    checkingConnectors = false;
+    broadcast({ type: 'connectors', error: servers.length ? null : (err?.message ?? 'No MCP servers found.') });
+  });
+}
+function connectorList() {
+  const c = loadSettings().connectors ?? {};
+  const off = new Set(c.disabled ?? []);
+  return { servers: (c.servers ?? []).map(x => ({ ...x, enabled: !off.has(x.name) })), checkedAt: c.checkedAt ?? null, checking: checkingConnectors };
+}
+
+// ---------- Approvals: the chat agent asks before risky actions (see approve-mcp.mjs) ----------
+const TOKEN = randomUUID();
+const approvals = new Map(); // id -> { id, chat, tool, summary, input, resolve }
+function requestApproval({ chat, tool, input }) {
+  return new Promise(resolve => {
+    let s; try { s = loadSession(chat); } catch { return resolve({ allow: false, message: 'Unknown chat.' }); }
+    if (!chats.has(chat)) return resolve({ allow: false, message: 'This chat turn has ended.' });
+    const publishing = PUBLISH_TOOLS.includes(tool);
+    if (!publishing && (s.mode === 'full' || s.alwaysAllow?.includes(tool))) return resolve({ allow: true });
+    const a = { id: randomUUID().slice(0, 8), chat, tool, summary: toolSummary(tool, input), input, resolve };
+    approvals.set(a.id, a);
+    broadcast({ type: 'approval', id: a.id, chat, tool, summary: a.summary, input });
+  });
+}
+function answerApproval(id, allow, message) {
+  const a = approvals.get(id);
+  if (!a) return false;
+  approvals.delete(id);
+  a.resolve(allow ? { allow: true } : { allow: false, message: message || 'The user denied this action.' });
+  broadcast({ type: 'approval-done', id, chat: a.chat });
+  return true;
+}
+const pendingFor = (chat) => [...approvals.values()].filter(a => a.chat === chat).map(({ resolve, ...a }) => a);
+
 // ---------- Chat turns ----------
 const chats = new Map(); // session id -> { child, stopped }
 function chatTurn(s, text) {
@@ -165,17 +226,28 @@ function chatTurn(s, text) {
   saveSession(s);
   const cwd = s.project ? projectPath(s.project) : projectsRoot;
   mkdirSync(cwd, { recursive: true });
+  const mode = MODES[s.mode] ? s.mode : 'ask';
+  const { servers } = connectorList();
   const prompt = chatPrompt({
-    message: text, history: s.messages.slice(0, -1), project: s.project,
+    message: text, history: s.messages.slice(0, -1), project: s.project, mode, cwd,
+    connectors: servers.filter(c => c.enabled && c.status === 'connected').map(c => c.name),
     files: s.project ? listFiles(cwd).filter(f => f.type === 'file').map(f => f.path) : [],
     projects: listProjects(), skills: listSkills(), running: run?.running ? run.project : null,
   });
-  const { child, done } = runChat({ cwd, prompt, onEvent: ev => broadcast({ type: 'chat', id: s.id, ...ev }) });
-  const turn = { child, stopped: false };
+  // Per-turn files for the CLI: permission rules, and the approval MCP server that asks the user.
+  const settingsFile = writeRuntimeFile(`chat-${s.id}.settings.json`, { permissions: permissionRules({ alsoAllow: s.alwaysAllow ?? [] }) });
+  const mcpConfigFile = writeRuntimeFile(`chat-${s.id}.mcp.json`, { mcpServers: { orchestra: {
+    type: 'stdio', command: process.execPath, args: [join(here, 'approve-mcp.mjs')],
+    env: { ORCHESTRA_URL: ORIGIN, ORCHESTRA_TOKEN: TOKEN, ORCHESTRA_CHAT: s.id } } } });
+  const command = chatCommand({ mode, settingsFile, mcpConfigFile });
+  const turn = { child: null, stopped: false };
   chats.set(s.id, turn);
+  const { child, done } = runChat({ cwd, prompt, command, onEvent: ev => broadcast({ type: 'chat', id: s.id, ...ev }) });
+  turn.child = child;
   broadcast({ type: 'chat', id: s.id, kind: 'start' });
   done.then(r => {
     chats.delete(s.id);
+    for (const a of pendingFor(s.id)) answerApproval(a.id, false, 'The chat turn ended.');
     const parsed = parseRunBlock(r.text, { skills: listSkills().map(k => k.name) });
     const msg = { role: 'assistant', text: parsed.text, at: Date.now() };
     if (turn.stopped) msg.note = 'Stopped.';
@@ -216,10 +288,13 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store' });
     res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
   };
-  if (req.method === 'POST' && !isAllowedOrigin(req.headers.origin)) return send(403, { error: 'Forbidden origin' });
   const p = url.pathname;
+  // The approval server is a local process, not a page: it proves itself with the per-start token.
+  const internal = p === '/internal/approve' && req.headers['x-orchestra-token'] === TOKEN;
+  if (req.method === 'POST' && !internal && !isAllowedOrigin(req.headers.origin)) return send(403, { error: 'Forbidden origin' });
   try {
     const body = req.method === 'POST' ? JSON.parse((await readBody(req)) || '{}') : null;
+    if (internal) return send(200, await requestApproval(body));
     if (req.method === 'GET' && p === '/') return send(200, readFileSync(join(here, 'ui.html')), TYPES['.html']);
     if (p === '/api/config') return send(200, { ...config, previewPort: PREVIEW_PORT });
     if (p === '/api/events') {
@@ -248,7 +323,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p === '/api/sessions') return send(200, newSession(body.project || null));
     if (req.method === 'GET' && p === '/api/session') {
       const s = loadSession(url.searchParams.get('id'));
-      return send(200, { ...s, replying: chats.has(s.id) });
+      return send(200, { ...s, mode: MODES[s.mode] ? s.mode : 'ask', replying: chats.has(s.id), approvals: pendingFor(s.id) });
     }
     if (req.method === 'POST' && p === '/api/session') {
       const s = loadSession(body.id);
@@ -259,8 +334,40 @@ const server = http.createServer(async (req, res) => {
         return send(200, { ok: true });
       }
       if ('project' in body) { if (body.project) projectPath(body.project); s.project = body.project || null; }
+      if ('mode' in body) { if (!MODES[body.mode]) return send(400, { error: 'Unknown mode.' }); s.mode = body.mode; }
+      if (body.forget) s.alwaysAllow = [];
       saveSession(s);
       return send(200, s);
+    }
+    if (req.method === 'POST' && p === '/api/approve') {
+      const a = approvals.get(body.id);
+      if (!a) return send(404, { error: 'That request has already been answered.' });
+      if (body.allow && body.always) {
+        const s = loadSession(a.chat);
+        s.alwaysAllow = [...new Set([...(s.alwaysAllow ?? []), a.tool])];
+        saveSession(s);
+      }
+      answerApproval(body.id, !!body.allow);
+      return send(200, { ok: true });
+    }
+
+    // Connectors
+    if (req.method === 'GET' && p === '/api/connectors') return send(200, connectorList());
+    if (req.method === 'POST' && p === '/api/connectors') {
+      const s = loadSettings();
+      const c = s.connectors ?? {};
+      const off = new Set(c.disabled ?? []);
+      body.enabled ? off.delete(body.name) : off.add(body.name);
+      s.connectors = { ...c, disabled: [...off] };
+      saveSettings(s);
+      broadcast({ type: 'connectors' });
+      return send(200, connectorList());
+    }
+    if (req.method === 'POST' && p === '/api/connectors/refresh') { refreshConnectors(); return send(200, { ok: true }); }
+    if (req.method === 'POST' && p === '/api/connectors/signin') {
+      // Sign-in for MCP servers happens in Claude Code itself: open it in a new console window.
+      if (process.platform === 'win32') exec('start "Claude Code - type /mcp to sign in to connectors" cmd /k claude.cmd', { cwd: here });
+      return send(200, { ok: true });
     }
     if (req.method === 'POST' && p === '/api/chat') {
       const text = String(body.text ?? '').trim();
@@ -270,7 +377,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && p === '/api/chat/stop') {
       const t = chats.get(body.id);
-      if (t) { t.stopped = true; killTree(t.child); }
+      if (t) { t.stopped = true; for (const a of pendingFor(body.id)) answerApproval(a.id, false, 'Stopped by the user.'); killTree(t.child); }
       return send(200, { ok: true });
     }
 
@@ -334,6 +441,7 @@ const preview = http.createServer((req, res) => {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   preview.listen(PREVIEW_PORT, '127.0.0.1');
+  refreshConnectors(); // takes a while; the list updates in the app when it's done
   server.listen(PORT, '127.0.0.1', () => {
     console.log(`Orchestra is running at ${ORIGIN}  (keep this window open; close it to stop)`);
     if (process.platform === 'win32' && !process.argv.includes('--no-open'))

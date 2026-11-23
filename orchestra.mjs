@@ -5,12 +5,40 @@
 // Project rules are read from <dir>/RULES.md automatically.
 // The desktop UI (server.mjs) uses the same functions.
 import { spawn, execFile } from 'node:child_process';
-import { readFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const config = JSON.parse(readFileSync(resolve(here, 'flows.json'), 'utf8'));
+
+// ---------- Local settings (settings.json, not in git) and connector permissions ----------
+// runtimeDir holds per-run files the claude CLI reads (permission rules, MCP config). Not in git.
+export const runtimeDir = resolve(here, '.orchestra');
+const settingsFile = resolve(here, 'settings.json');
+export function loadSettings() { try { return JSON.parse(readFileSync(settingsFile, 'utf8')); } catch { return {}; } }
+export function saveSettings(s) { writeFileSync(settingsFile, JSON.stringify(s, null, 2) + '\n'); }
+
+// Claude Code names MCP tools mcp__<server>__<tool>; a rule of just mcp__<server> covers the whole server.
+export const mcpKey = (name) => 'mcp__' + String(name).replace(/[^A-Za-z0-9_-]/g, '_');
+// Tools that publish or post publicly: build agents may never use them, and in chat they always ask first.
+export const PUBLISH_TOOLS = ['mcp__claude_ai_Astrocade__publish_game'];
+
+// Permission rules for the claude CLI: enabled connectors are allowed, switched-off ones denied.
+export function permissionRules({ forAgents = false, alsoAllow = [] } = {}) {
+  const c = loadSettings().connectors ?? {};
+  const off = new Set(c.disabled ?? []);
+  const servers = c.servers ?? [];
+  const allow = [...servers.filter(s => !off.has(s.name)).map(s => mcpKey(s.name)), ...alsoAllow];
+  const deny = servers.filter(s => off.has(s.name)).map(s => mcpKey(s.name));
+  return forAgents ? { allow, deny: [...deny, ...PUBLISH_TOOLS] } : { allow, deny, ask: PUBLISH_TOOLS };
+}
+export function writeRuntimeFile(name, data) {
+  mkdirSync(runtimeDir, { recursive: true });
+  const file = join(runtimeDir, name);
+  writeFileSync(file, JSON.stringify(data, null, 2));
+  return file;
+}
 
 export function pickFlow(job, flowName) {
   if (flowName) {
@@ -22,9 +50,12 @@ export function pickFlow(job, flowName) {
 }
 
 // Prompt goes in via stdin, so only config tokens (models, flags) appear on the command line.
+// Claude build agents get the enabled connectors (never publishing) through a settings file.
 export function command(agent) {
-  if (agent.cli === 'claude')
-    return `claude -p --model ${agent.model} --permission-mode ${agent.permissionMode ?? 'acceptEdits'}`;
+  if (agent.cli === 'claude') {
+    const rules = writeRuntimeFile('agent-settings.json', { permissions: permissionRules({ forAgents: true }) });
+    return `claude -p --model ${agent.model} --permission-mode ${agent.permissionMode ?? 'acceptEdits'} --settings "${rules}"`;
+  }
   if (agent.cli === 'codex')
     return `codex exec -m ${agent.model} -s workspace-write --skip-git-repo-check ${(agent.args ?? []).join(' ')} -`;
   throw new Error(`Unknown cli "${agent.cli}" (use claude or codex)`);

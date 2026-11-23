@@ -32,7 +32,12 @@ It opens at http://127.0.0.1:4545. On Windows it opens as an Edge app window; pa
 
 The app works like a chat plus an IDE:
 
-- **Chat** (left): talk to Sonnet. Ask questions about the project, get advice, or ask for something to be built or changed. Sonnet can read the project's files but never edits them. When you want work done, it writes a full brief, picks the flow and the skills, and starts the build. Chats are saved in `sessions/`, and each one is linked to a project in `projects/<name>`.
+- **Chat** (left): talk to Sonnet like any AI assistant. It has Claude Code's full toolset: it reads, writes and moves files in any folder, runs commands, installs packages, uses git (including push), searches the web and uses your connectors. It does small jobs itself; for big builds it writes a full brief, picks the flow and the skills, and starts the build team. Chats are saved in `sessions/`, and each one is linked to a project in `projects/<name>`.
+- **Permission mode** (per chat, next to the project):
+  - **Ask first** (default): commands, file changes and other risky actions show an Allow / Always allow / Deny card in the chat and wait for you. Read-only commands run without asking.
+  - **Auto-accept edits**: file edits run directly; commands still ask.
+  - **Full access**: everything runs without asking.
+- **Connectors** (plug icon): every MCP server your `claude` CLI can see: claude.ai connectors (like Astrocade), plugin servers and local ones. Switched-on connectors work in the chat and for the Claude build agents. **Sign in...** opens Claude Code in a new window; type `/mcp` there to sign in to a connector, then press **Refresh**.
 - **Builds**: the pipeline shows at the top (plan, code, review, ...). **Stop build** ends it. A failed or stopped build can be retried from the step that failed.
 - **Preview**: runs the project's `index.html`. It is served from port 4546, a separate origin, so a previewed page cannot use Orchestra's controls.
 - **Code**: a file explorer and the VS Code editor (Monaco). Edit any file and press Ctrl+S to save. Add a `RULES.md` to a project to give every agent project rules.
@@ -64,7 +69,11 @@ Edit `flows.json`, then restart the app:
 
 ## Safety
 
-The server listens on 127.0.0.1 only and rejects requests from other websites. The chat agent only gets read tools (Read, Glob, Grep). Files can only be read or saved inside a project folder. Agents run with file-edit permission inside the project folder: Claude uses `acceptEdits`, and Codex uses the `workspace-write` sandbox.
+The server listens on 127.0.0.1 only and rejects requests from other websites. The app's own file editor can only read or save inside a project folder.
+
+The chat agent can act on your whole computer, limited by the chat's permission mode. In **Ask first** its approval requests go through `approve-mcp.mjs`, a small local MCP server that asks you in the app; it reaches the app with a token that changes every time Orchestra starts. Publishing tools (Astrocade's `publish_game`) always ask first in chat, even in Full access, and are never allowed for build agents. Codex agents use their own setup (`~/.codex`), not Orchestra's connector switches.
+
+Your connector switches are saved in `settings.json`, and per-run permission files go in `.orchestra/`. Neither is in git. Agents run with file-edit permission inside the project folder: Claude uses `acceptEdits`, and Codex uses the `workspace-write` sandbox.
 
 ## Tests
 

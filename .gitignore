@@ -4,3 +4,5 @@ test-snake/
 demo/
 *.log
 sessions/
+settings.json
+.orchestra/

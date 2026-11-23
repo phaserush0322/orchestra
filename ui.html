@@ -115,6 +115,31 @@
   .box-foot { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:11.5px; color:var(--faint); }
   #send { padding:6px 14px; }
 
+  /* Permission mode + approvals */
+  .proj select#modeSel { flex:none; width:auto; }
+  .proj select#modeSel[data-mode=full] { color:var(--run); border-color:rgba(227,179,65,.45); }
+  .approve { border:1px solid rgba(227,179,65,.5); background:var(--run-bg); border-radius:var(--r); padding:11px 12px; display:flex; flex-direction:column; gap:8px; }
+  .approve .q { font-size:12.5px; color:var(--run); font-weight:600; }
+  .approve code.cmd { display:block; background:#07090d; border:1px solid var(--line); border-radius:var(--r-sm); padding:8px 10px; font-size:12.5px;
+                      white-space:pre-wrap; word-break:break-word; max-height:180px; overflow:auto; color:var(--text); }
+  .approve .row button { padding:5px 12px; font-size:12.5px; }
+  .allow { background:var(--ok); color:#06210d; }
+
+  /* Connectors view */
+  .conn-group { font-size:11px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--faint); margin:8px 2px 2px; }
+  .conn { display:flex; align-items:center; gap:10px; padding:9px 11px; background:var(--bg); border:1px solid var(--line); border-radius:var(--r-sm); }
+  .conn .meta { flex:1; min-width:0; }
+  .conn b { display:block; font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .conn small { display:block; font-size:11.5px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sdot { width:8px; height:8px; border-radius:50%; flex:none; background:var(--faint); }
+  .sdot.connected { background:var(--ok); box-shadow:0 0 0 3px var(--ok-bg); } .sdot.needs-auth { background:var(--run); } .sdot.failed { background:var(--bad); }
+  .switch { position:relative; width:34px; height:20px; flex:none; }
+  .switch input { opacity:0; width:100%; height:100%; margin:0; position:absolute; cursor:pointer; z-index:1; }
+  .switch span { position:absolute; inset:0; border-radius:99px; background:var(--line-2); transition:background .15s; }
+  .switch span::after { content:""; position:absolute; left:3px; top:3px; width:14px; height:14px; border-radius:50%; background:#fff; transition:transform .15s; }
+  .switch input:checked + span { background:var(--accent); } .switch input:checked + span::after { transform:translateX(14px); }
+  .switch input:focus-visible + span { outline:2px solid var(--accent-2); outline-offset:2px; }
+
   /* Skills view */
   .skills-view { flex:1; overflow:auto; padding:14px; display:flex; flex-direction:column; gap:10px; }
   .skills-view .intro { font-size:12.5px; color:var(--muted); }
@@ -226,6 +251,8 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg></button>
   <button class="act" id="actSkills" aria-selected="false" title="Skills">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/></svg></button>
+  <button class="act" id="actConn" aria-selected="false" title="Connectors (MCP)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0zM12 16v5"/></svg></button>
 </nav>
 
 <aside class="side">
@@ -238,12 +265,14 @@
       <button class="icon" id="delChat" title="Delete this chat">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
     </div>
-    <div class="proj"><span>Project</span><select id="projectSel" aria-label="Project for this chat"></select></div>
+    <div class="proj"><span>Project</span><select id="projectSel" aria-label="Project for this chat"></select>
+      <select id="modeSel" aria-label="What Sonnet may do without asking" title="What Sonnet may do without asking">
+        <option value="ask">Ask first</option><option value="edits">Auto-accept edits</option><option value="full">Full access</option></select></div>
     <div id="messages" aria-live="polite"></div>
     <div class="composer">
       <div class="box">
         <textarea id="input" rows="1" placeholder="Ask anything, or describe what to build..."></textarea>
-        <div class="box-foot"><span>Sonnet replies. Builds run Fable &rarr; Opus &rarr; &hellip;</span><button id="send">Send</button></div>
+        <div class="box-foot"><span>Sonnet can run commands, edit files, use git and connectors.</span><button id="send">Send</button></div>
       </div>
     </div>
   </div>
@@ -261,6 +290,18 @@
           <button class="ghost sm danger" id="deleteSkill" style="margin-left:auto">Delete</button></div>
       </div>
       <div id="skills" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+  </div>
+  <!-- Connectors view -->
+  <div id="connView" class="side" style="border:0;flex:1" hidden>
+    <div class="side-head"><b style="flex:1;padding-left:4px">Connectors</b>
+      <button class="ghost sm" id="connSignin" title="Opens Claude Code in a new window; type /mcp there to sign in">Sign in...</button>
+      <button class="sm" id="connRefresh">Refresh</button></div>
+    <div class="skills-view">
+      <p class="intro">MCP servers from your Claude account, plugins and local setup. Switched-on connectors can be used by Sonnet in chat and by the Claude build agents.
+        Publishing (like Astrocade's publish) always asks you first in chat and is never allowed for build agents.</p>
+      <p class="intro" id="connStatus"></p>
+      <div id="conns" style="display:flex;flex-direction:column;gap:6px"></div>
     </div>
   </div>
 </aside>
@@ -358,11 +399,61 @@
 
   // ---------- Views ----------
   function showView(v) {
-    $('chatView').hidden = v !== 'chat'; $('skillsView').hidden = v !== 'skills';
+    $('chatView').hidden = v !== 'chat'; $('skillsView').hidden = v !== 'skills'; $('connView').hidden = v !== 'conn';
     $('actChat').setAttribute('aria-selected', v === 'chat'); $('actSkills').setAttribute('aria-selected', v === 'skills');
+    $('actConn').setAttribute('aria-selected', v === 'conn');
   }
   $('actChat').onclick = () => showView('chat');
   $('actSkills').onclick = () => { showView('skills'); loadSkills(); };
+  $('actConn').onclick = () => { showView('conn'); loadConnectors(); };
+
+  // ---------- Connectors ----------
+  const CSTATUS = { connected: 'Connected', 'needs-auth': 'Needs sign-in', failed: 'Failed to connect', 'not-configured': 'Not configured', unknown: 'Unknown' };
+  const cname = n => n.replace(/^claude\.ai /, '').replace(/^plugin:([^:]+):/, '');
+  async function loadConnectors() {
+    let c; try { c = await api('/api/connectors'); } catch (e) { $('connStatus').textContent = e.message; return; }
+    const on = c.servers.filter(s => s.enabled && s.status === 'connected').length;
+    $('connStatus').textContent = c.checking ? 'Checking your MCP servers... (this takes up to a minute)'
+      : c.checkedAt ? `${on} connected and switched on. Checked ${new Date(c.checkedAt).toLocaleTimeString()}.` : 'Not checked yet. Press Refresh.';
+    $('connRefresh').disabled = c.checking;
+    const groups = [['claude.ai', 'Claude account connectors'], ['plugin', 'From plugins'], ['local', 'Local (your Claude Code config)']];
+    $('conns').innerHTML = groups.map(([src, label]) => {
+      const list = c.servers.filter(s => s.source === src);
+      return list.length ? `<div class="conn-group">${label}</div>` + list.map(s => `<div class="conn" title="${esc(s.name)} - ${esc(s.detail)}">
+        <span class="sdot ${esc(s.status)}"></span><div class="meta"><b>${esc(cname(s.name))}</b>
+        <small>${esc(CSTATUS[s.status] ?? s.status)}${src === 'plugin' ? ` &middot; ${esc(s.name.split(':')[1] ?? '')}` : ''}</small></div>
+        <label class="switch" title="${s.enabled ? 'On' : 'Off'}"><input type="checkbox" data-conn="${esc(s.name)}" ${s.enabled ? 'checked' : ''} aria-label="Use ${esc(cname(s.name))}"><span></span></label></div>`).join('') : '';
+    }).join('') || '<span class="muted">No MCP servers found yet.</span>';
+  }
+  $('conns').onchange = async e => {
+    const i = e.target.closest('[data-conn]'); if (!i) return;
+    try { await api('/api/connectors', { name: i.dataset.conn, enabled: i.checked }); loadConnectors(); } catch (err) { toast(err.message, true); }
+  };
+  $('connRefresh').onclick = async () => { await api('/api/connectors/refresh', {}).catch(() => {}); loadConnectors(); };
+  $('connSignin').onclick = async () => {
+    await api('/api/connectors/signin', {}).catch(() => {});
+    toast('Claude Code opened in a new window. Type /mcp there, sign in, then press Refresh here.');
+  };
+
+  // ---------- Permission mode + approvals ----------
+  let approvals = [];
+  $('modeSel').onchange = async () => {
+    const mode = $('modeSel').value;
+    if (mode === 'full' && !confirm('Full access lets Sonnet run commands, change or delete files and push to git without asking you. Turn it on for this chat?')) {
+      $('modeSel').value = session.mode ?? 'ask'; return;
+    }
+    try { await api('/api/session', { id: session.id, mode }); session.mode = mode; $('modeSel').dataset.mode = mode; }
+    catch (e) { toast(e.message, true); }
+  };
+  const approvalHtml = a => `<div class="approve"><div class="q">Sonnet wants to use ${esc(a.tool.replace(/^mcp__claude_ai_/, '').replace(/^mcp__/, ''))}</div>
+    <code class="cmd">${esc(a.input?.command ?? a.input?.file_path ?? a.summary ?? '')}</code>
+    <div class="row"><button class="allow" data-act="allow" data-id="${esc(a.id)}">Allow</button>
+      ${/publish/i.test(a.tool) ? '' : `<button class="ghost" data-act="always" data-id="${esc(a.id)}">Always allow ${esc(a.tool.split('__').at(-1))} in this chat</button>`}
+      <button class="ghost danger" data-act="deny" data-id="${esc(a.id)}">Deny</button></div></div>`;
+  async function answer(id, allow, always) {
+    approvals = approvals.filter(a => a.id !== id); renderChat();
+    try { await api('/api/approve', { id, allow, always }); } catch (e) { toast(e.message, true); }
+  }
 
   let tab = store.get('tab', 'preview');
   function showTab(t) {
@@ -392,6 +483,8 @@
     session = await api('/api/session?id=' + encodeURIComponent(id));
     store.set('session', id);
     live = session.replying ? { text: '', tools: [] } : null;
+    approvals = session.approvals ?? [];
+    $('modeSel').value = $('modeSel').dataset.mode = session.mode ?? 'ask';
     $('sessionSel').value = id;
     setReplying(!!session.replying);
     renderChat(true);
@@ -403,6 +496,7 @@
     if (!session) return;
     const prevProject = session.project;
     try { session = await api('/api/session?id=' + encodeURIComponent(session.id)); } catch { return; }
+    approvals = session.approvals ?? [];
     renderChat();
     renderTop();
     if (prevProject !== session.project) { await refreshProjects(); closeFile(true); await refreshTree(); loadPreview(); }
@@ -464,6 +558,7 @@
     const box = $('messages'), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
     const parts = (session?.messages ?? []).map(msgHtml);
     if (live) parts.push(`<div class="msg ai"><div class="avatar">S</div><div class="ai-body" id="live">${liveInner()}</div></div>`);
+    for (const a of approvals) parts.push(approvalHtml(a));
     box.innerHTML = parts.length ? parts.join('') : welcomeHtml();
     box.querySelectorAll('.md a').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
     if (force || atBottom) box.scrollTop = box.scrollHeight;
@@ -484,6 +579,7 @@
     if (sug) { $('input').value = sug.dataset.sug; autosize(); $('input').focus(); return; }
     const b = e.target.closest('[data-act]'); if (!b) return;
     const act = b.dataset.act;
+    if (act === 'allow' || act === 'always' || act === 'deny') return answer(b.dataset.id, act !== 'deny', act === 'always');
     if (act === 'output') showTab('output');
     if (act === 'preview') showTab('preview');
     if (act === 'code') showTab('code');
@@ -808,6 +904,12 @@
       if (ev.project === session?.project) refreshTree().then(refreshPreview);
     },
     files(ev) { if (ev.project === session?.project) refreshTree().then(refreshPreview); },
+    connectors() { if (!$('connView').hidden) loadConnectors(); },
+    approval(ev) {
+      if (ev.chat !== session?.id || approvals.some(a => a.id === ev.id)) return;
+      approvals.push(ev); renderChat(true); showView('chat');
+    },
+    'approval-done'(ev) { if (approvals.some(a => a.id === ev.id)) { approvals = approvals.filter(a => a.id !== ev.id); renderChat(); } },
   };
   document.querySelector('[data-tab=output]').addEventListener('click', () => $('logCount').textContent = '');
 

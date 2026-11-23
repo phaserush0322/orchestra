@@ -36,8 +36,24 @@ assert.match(command(config.agents.astra), /^codex exec -m gpt-6\.2-astra .* -$/
 for (const [name, flow] of Object.entries(config.flows))
   for (const s of flow.steps) assert.ok(config.agents[s.agent], `${name}/${s.name} uses unknown agent ${s.agent}`);
 // Chat: the build request is pulled out of the reply and checked against real flows and skills.
-import { parseRunBlock, chatPrompt, chatCommand } from './chat.mjs';
-import { inside, projectPath } from './server.mjs';
+import { parseRunBlock, chatPrompt, chatCommand, toolSummary } from './chat.mjs';
+import { inside, projectPath, parseMcpList } from './server.mjs';
+import { mcpKey, PUBLISH_TOOLS } from './orchestra.mjs';
+
+// Connectors: parsed from "claude mcp list"; rule names match how Claude Code names MCP tools.
+const mcp = parseMcpList([
+  'Checking MCP server health…', '',
+  'claude.ai Astrocade: https://mcp.astrocade.com/mcp - ✔ Connected',
+  'plugin:design:slack: https://mcp.slack.com/mcp (HTTP) - ! Needs authentication',
+  'plugin:design:gmail:  (HTTP) - - Not configured',
+  'blender: C:\\uvx.exe mcp-for-blender - ✘ Failed to connect — CONNECTION_CLOSED',
+].join('\n'));
+assert.deepEqual(mcp.map(m => [m.name, m.status, m.source]), [
+  ['claude.ai Astrocade', 'connected', 'claude.ai'], ['plugin:design:slack', 'needs-auth', 'plugin'],
+  ['plugin:design:gmail', 'not-configured', 'plugin'], ['blender', 'failed', 'local']]);
+assert.equal(mcpKey('claude.ai Astrocade'), 'mcp__claude_ai_Astrocade');
+assert.equal(mcpKey('plugin:parallax-threejs:playwright-mcp'), 'mcp__plugin_parallax-threejs_playwright-mcp');
+assert.ok(PUBLISH_TOOLS[0].startsWith(mcpKey('claude.ai Astrocade') + '__'));
 const reply = 'On it.\n<orchestra-run>\n{"project":"Neon Snake!","flow":"game","skills":["web-game","made-up"],"brief":"Build a snake game"}\n</orchestra-run>';
 const pr = parseRunBlock(reply, { skills: ['web-game'] });
 assert.equal(pr.text, 'On it.');
@@ -46,7 +62,14 @@ assert.equal(parseRunBlock('Just an answer.').run, null);
 assert.equal(parseRunBlock('x <orchestra-run>{"brief":"make a todo app","flow":"nope"}</orchestra-run>').run.flow, 'default');
 assert.ok(parseRunBlock('x <orchestra-run>not json</orchestra-run>').error);
 assert.ok(parseRunBlock('x <orchestra-run>{"flow":"game"}</orchestra-run>').error);
-assert.match(chatCommand(), /^claude -p --model claude-sonnet-5-5 .*--tools Read,Glob,Grep/);
+// Chat modes map to CLI permission modes; Ask first routes prompts to the app.
+assert.match(chatCommand(), /^claude -p --model claude-sonnet-5-5 .*--permission-mode manual/);
+assert.ok(!/bypassPermissions/.test(chatCommand({ mode: 'full' })), 'full access goes through the app so publishing can still ask');
+assert.match(chatCommand({ mode: 'edits', mcpConfigFile: 'C:\\x\\m.json', settingsFile: 'C:\\x\\s.json' }),
+  /--permission-mode acceptEdits --mcp-config "C:\\x\\m.json" --permission-prompt-tool mcp__orchestra__approve --settings "C:\\x\\s.json"/);
+assert.ok(!/strict-mcp-config|--tools /.test(chatCommand()), 'the chat gets all tools and MCP servers');
+assert.equal(toolSummary('Bash', { command: 'git   push origin main' }), 'Bash git push origin main');
+assert.equal(toolSummary('mcp__claude_ai_Astrocade__list_my_games', {}), 'Astrocade: list_my_games');
 assert.ok(chatPrompt({ message: 'hi', history: [{ role: 'user', text: 'earlier' }] }).includes('USER: earlier'));
 
 // Files: nothing outside the project folder can be read or written.
