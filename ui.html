@@ -4,221 +4,826 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Orchestra</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <style>
-  :root { --bg:#0d1117; --panel:#161b22; --line:#30363d; --text:#e6edf3; --muted:#8b949e;
-          --accent:#7c5cff; --ok:#3fb950; --run:#d29922; --bad:#f85149; }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 "Segoe UI", system-ui, sans-serif;
-         height:100vh; display:grid; grid-template-columns:340px 1fr; }
-  aside { border-right:1px solid var(--line); padding:20px; display:flex; flex-direction:column; gap:14px; overflow:auto; }
-  main { display:flex; flex-direction:column; gap:16px; padding:20px; min-height:0; overflow:hidden; }
-  h1 { font-size:20px; margin:0; } h1 span { color:var(--accent); }
-  h2 { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 8px; }
-  label { display:flex; flex-direction:column; gap:6px; color:var(--muted); font-size:12px; }
-  textarea, input, select { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:10px; font:inherit; }
-  textarea { min-height:110px; resize:vertical; }
-  textarea:focus, input:focus, select:focus { outline:2px solid var(--accent); outline-offset:-1px; }
-  button { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:10px 14px; font:inherit; font-weight:600; cursor:pointer; }
-  button:disabled { opacity:.5; cursor:default; }
-  button.ghost { background:transparent; border:1px solid var(--line); color:var(--text); font-weight:500; padding:6px 10px; }
-  #agents > div { display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px solid var(--line); }
-  .agents code { color:var(--muted); }
-  #flows > div { padding:4px 0; color:var(--muted); } .flows b { color:var(--text); }
-  .steps { display:flex; gap:10px; align-items:stretch; flex-wrap:wrap; }
-  .step { flex:1; min-width:170px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
-  .step .top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
-  .step b { text-transform:capitalize; }
-  .badge { font-size:11px; padding:2px 8px; border-radius:99px; border:1px solid var(--line); color:var(--muted); }
-  .step[data-s=running] { border-color:var(--run); } .step[data-s=running] .badge { color:var(--run); border-color:var(--run); }
-  .step[data-s=done] .badge { color:var(--ok); border-color:var(--ok); }
-  .step[data-s=failed] { border-color:var(--bad); } .step[data-s=failed] .badge { color:var(--bad); border-color:var(--bad); }
-  .agent { margin-top:6px; font-weight:600; } .model, .time { color:var(--muted); font-size:12px; }
-  .step button { margin-top:8px; }
-  .arrow { align-self:center; color:var(--muted); }
-  pre { flex:1; margin:0; min-height:120px; background:#010409; border:1px solid var(--line); border-radius:10px; padding:12px;
-        overflow:auto; white-space:pre-wrap; word-break:break-word; font:12px/1.5 Consolas, ui-monospace, monospace; color:#c9d1d9; }
-  .results { display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
-  .results img { max-height:140px; border-radius:8px; border:1px solid var(--line); }
-  .files { display:flex; flex-direction:column; gap:4px; } .files a { color:#a5b4fc; }
-  .hint { font-size:11px; color:var(--muted); margin-top:-8px; }
-  .skills-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; } .skills-head h2 { margin:0; }
-  #skills > div { display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid var(--line); }
-  #skills label { flex:1; flex-direction:row; align-items:center; gap:8px; color:var(--text); font-size:13px; cursor:pointer; }
-  #skills input { accent-color:var(--accent); }
-  .link { background:none; border:0; padding:0; color:#a5b4fc; font-weight:500; font-size:12px; }
-  #editor { display:flex; flex-direction:column; gap:8px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; margin-top:8px; }
-  #editor[hidden] { display:none; }
-  #editor textarea { min-height:140px; background:var(--bg); } #editor input { background:var(--bg); }
-  .row { display:flex; gap:8px; } .row .danger { margin-left:auto; color:var(--bad); }
-  .muted { color:var(--muted); } .err { color:var(--bad); } .ok { color:var(--ok); }
-  @media (max-width:800px) { body { grid-template-columns:1fr; height:auto; } aside { border-right:0; border-bottom:1px solid var(--line); } main { overflow:visible; } }
+  :root {
+    --bg:#0b0d12; --panel:#12151c; --panel-2:#181c25; --panel-3:#1e2330; --line:#252a35; --line-2:#323846;
+    --text:#e7eaf0; --muted:#8a93a3; --faint:#5d6574;
+    --accent:#8b6cff; --accent-2:#b3a1ff; --accent-bg:rgba(139,108,255,.13);
+    --ok:#3fb950; --ok-bg:rgba(63,185,80,.12); --run:#e3b341; --run-bg:rgba(227,179,65,.12);
+    --bad:#f85149; --bad-bg:rgba(248,81,73,.12);
+    --claude:#d97757; --codex:#19c37d;
+    --r:12px; --r-sm:8px;
+    --mono:"Cascadia Code",Consolas,ui-monospace,monospace;
+  }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+         display:grid; grid-template-columns:52px minmax(340px,420px) minmax(0,1fr); overflow:hidden; }
+  h1, h2, h3, p { margin:0; }
+  code, pre { font-family:var(--mono); }
+  [hidden] { display:none !important; }
+  button { display:inline-flex; align-items:center; justify-content:center; gap:6px; background:var(--accent); color:#fff; border:0; border-radius:var(--r-sm);
+           padding:8px 13px; font:inherit; font-weight:600; cursor:pointer; transition:filter .15s, background .15s, border-color .15s, color .15s; }
+  button:hover:not(:disabled) { filter:brightness(1.1); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  button:focus-visible, select:focus-visible, a:focus-visible { outline:2px solid var(--accent-2); outline-offset:2px; }
+  .ghost { background:transparent; border:1px solid var(--line-2); color:var(--text); font-weight:500; }
+  .ghost:hover:not(:disabled) { background:var(--panel-2); filter:none; }
+  .icon { background:transparent; color:var(--muted); padding:5px 7px; font-weight:500; }
+  .icon:hover:not(:disabled) { background:var(--panel-3); color:var(--text); filter:none; }
+  .sm { padding:5px 10px; font-size:12.5px; }
+  .danger { color:var(--bad); }
+  .stop { background:var(--bad-bg); color:var(--bad); border:1px solid rgba(248,81,73,.45); }
+  input, textarea, select { background:var(--bg); color:var(--text); border:1px solid var(--line-2); border-radius:var(--r-sm); padding:8px 10px; font:inherit; }
+  input:focus, textarea:focus, select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-bg); }
+  select { cursor:pointer; }
+  .muted { color:var(--muted); } .faint { color:var(--faint); }
+  ::-webkit-scrollbar { width:10px; height:10px; } ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:var(--line-2); border-radius:10px; border:2px solid transparent; background-clip:padding-box; }
+
+  /* ---------- Activity bar ---------- */
+  .activity { background:#090b0f; border-right:1px solid var(--line); display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 0; }
+  .logo { width:32px; height:32px; border-radius:9px; display:grid; place-items:center; color:#fff; font-size:16px; margin-bottom:10px;
+          background:linear-gradient(135deg,var(--accent),#5b8cff); box-shadow:0 4px 14px rgba(139,108,255,.35); }
+  .act { width:40px; height:40px; padding:0; background:transparent; color:var(--faint); border-radius:10px; position:relative; }
+  .act:hover:not(:disabled) { color:var(--text); background:var(--panel-2); filter:none; }
+  .act[aria-selected=true] { color:var(--text); }
+  .act[aria-selected=true]::before { content:""; position:absolute; left:-6px; top:9px; bottom:9px; width:3px; border-radius:3px; background:var(--accent); }
+  .act svg { width:21px; height:21px; }
+
+  /* ---------- Left panel ---------- */
+  .side { display:flex; flex-direction:column; min-height:0; min-width:0; background:var(--panel); border-right:1px solid var(--line); }
+  .side-head { display:flex; align-items:center; gap:6px; padding:10px 12px; border-bottom:1px solid var(--line); }
+  .side-head select { flex:1; min-width:0; background:var(--panel-2); border-color:var(--line); font-weight:600; }
+  .proj { display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); font-size:12.5px; color:var(--muted); }
+  .proj select { flex:1; min-width:0; padding:4px 8px; font-size:12.5px; background:var(--bg); }
+
+  #messages { flex:1; overflow:auto; padding:16px 14px 8px; display:flex; flex-direction:column; gap:14px; }
+  .msg.user { align-self:flex-end; max-width:88%; }
+  .msg.user .bubble { background:var(--accent-bg); border:1px solid rgba(139,108,255,.35); padding:9px 13px; border-radius:14px 14px 4px 14px; white-space:pre-wrap; word-break:break-word; }
+  .msg.ai { display:flex; gap:10px; align-items:flex-start; }
+  .avatar { width:26px; height:26px; flex:none; border-radius:8px; display:grid; place-items:center; font-size:12px; font-weight:700; color:#fff; background:var(--claude); margin-top:1px; }
+  .ai-body { min-width:0; flex:1; }
+  .md { word-break:break-word; }
+  .md > :first-child { margin-top:0; } .md > :last-child { margin-bottom:0; }
+  .md p, .md ul, .md ol, .md pre, .md blockquote, .md table { margin:0 0 10px; }
+  .md ul, .md ol { padding-left:20px; } .md li { margin:2px 0; }
+  .md h1, .md h2, .md h3, .md h4 { font-size:14.5px; margin:14px 0 6px; }
+  .md code { background:var(--panel-3); padding:1px 5px; border-radius:5px; font-size:12.5px; }
+  .md pre { background:#07090d; border:1px solid var(--line); border-radius:var(--r-sm); padding:10px 12px; overflow:auto; }
+  .md pre code { background:none; padding:0; }
+  .md a { color:var(--accent-2); }
+  .md table { border-collapse:collapse; font-size:13px; } .md th, .md td { border:1px solid var(--line-2); padding:4px 8px; }
+  .md blockquote { border-left:3px solid var(--line-2); padding-left:10px; color:var(--muted); }
+  .tools { display:flex; flex-direction:column; gap:3px; margin-bottom:6px; }
+  .tool { font:12px var(--mono); color:var(--faint); }
+  .tool::before { content:"\25B8  "; color:var(--accent-2); }
+  .typing { display:inline-flex; gap:4px; padding:6px 0; } .typing i { width:6px; height:6px; border-radius:50%; background:var(--muted); animation:blink 1.2s infinite; }
+  .typing i:nth-child(2) { animation-delay:.2s; } .typing i:nth-child(3) { animation-delay:.4s; }
+  @keyframes blink { 0%,80%,100% { opacity:.25; } 40% { opacity:1; } }
+  .note { margin-top:6px; font-size:12.5px; padding:6px 10px; border-radius:var(--r-sm); }
+  .note.err { color:var(--bad); background:var(--bad-bg); } .note.info { color:var(--muted); background:var(--panel-2); }
+
+  .build { border:1px solid var(--line-2); border-radius:var(--r); background:var(--bg); padding:12px; display:flex; flex-direction:column; gap:8px; position:relative; overflow:hidden; }
+  .build::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--faint); }
+  .build[data-status=running]::before { background:var(--run); } .build[data-status=done]::before { background:var(--ok); }
+  .build[data-status=failed]::before, .build[data-status=stopped]::before, .build[data-status=interrupted]::before { background:var(--bad); }
+  .build-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .build-head b { font-size:13.5px; }
+  .build-sub { font-size:12px; color:var(--muted); }
+  .chips { display:flex; flex-wrap:wrap; gap:5px; }
+  .chip { font-size:11.5px; padding:2px 8px; border-radius:99px; background:var(--panel-2); border:1px solid var(--line); color:var(--muted); }
+  .build details summary { cursor:pointer; font-size:12.5px; color:var(--accent-2); }
+  .brief { margin-top:6px; font-size:12.5px; color:var(--muted); white-space:pre-wrap; max-height:220px; overflow:auto; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; }
+  .spin { width:12px; height:12px; border-radius:50%; border:2px solid var(--run); border-top-color:transparent; animation:rot .8s linear infinite; flex:none; }
+  @keyframes rot { to { transform:rotate(360deg); } }
+
+  .welcome { margin:auto 0; text-align:center; padding:24px 8px; }
+  .welcome h2 { font-size:19px; margin-bottom:6px; }
+  .welcome p { color:var(--muted); margin-bottom:16px; }
+  .sugs { display:flex; flex-direction:column; gap:8px; }
+  .sug { background:var(--bg); border:1px solid var(--line-2); color:var(--text); font-weight:500; justify-content:flex-start; text-align:left; padding:10px 12px; }
+  .sug:hover:not(:disabled) { border-color:var(--accent); background:var(--accent-bg); filter:none; }
+
+  .composer { padding:10px 12px 12px; border-top:1px solid var(--line); }
+  .box { display:flex; flex-direction:column; gap:6px; background:var(--bg); border:1px solid var(--line-2); border-radius:var(--r); padding:8px 8px 8px 12px; transition:border-color .15s, box-shadow .15s; }
+  .box:focus-within { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-bg); }
+  #input { border:0; padding:4px 0; background:transparent; resize:none; min-height:24px; max-height:220px; box-shadow:none; line-height:1.5; }
+  .box-foot { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:11.5px; color:var(--faint); }
+  #send { padding:6px 14px; }
+
+  /* Skills view */
+  .skills-view { flex:1; overflow:auto; padding:14px; display:flex; flex-direction:column; gap:10px; }
+  .skills-view .intro { font-size:12.5px; color:var(--muted); }
+  .skill { display:flex; align-items:center; gap:10px; padding:9px 11px; background:var(--bg); border:1px solid var(--line); border-radius:var(--r-sm); }
+  .skill b { flex:1; font-weight:600; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #editor-skill { display:flex; flex-direction:column; gap:8px; background:var(--bg); border:1px solid var(--line-2); border-radius:var(--r); padding:12px; }
+  #editor-skill textarea { min-height:200px; resize:vertical; background:var(--panel); } #editor-skill input { background:var(--panel); }
+
+  /* ---------- Main ---------- */
+  main { display:flex; flex-direction:column; min-height:0; min-width:0; }
+  .topbar { display:flex; align-items:center; gap:14px; padding:10px 16px; border-bottom:1px solid var(--line); background:var(--panel); min-height:56px; }
+  .ptitle { min-width:0; }
+  .ptitle b { display:block; font-size:14.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ptitle span { font-size:12px; color:var(--muted); }
+  .pipeline { flex:1; display:flex; align-items:center; gap:6px; overflow-x:auto; min-width:0; justify-content:flex-end; }
+  .pstep { display:inline-flex; align-items:center; gap:7px; padding:5px 10px; border-radius:99px; background:var(--panel-2); border:1px solid var(--line); font-size:12px; white-space:nowrap; }
+  .pstep .n { width:18px; height:18px; border-radius:50%; display:grid; place-items:center; font-size:10.5px; font-weight:700; background:var(--panel-3); color:var(--muted); }
+  .pstep small { color:var(--faint); font-variant-numeric:tabular-nums; }
+  .pstep[data-s=running] { border-color:rgba(227,179,65,.5); background:var(--run-bg); } .pstep[data-s=running] .n { background:var(--run); color:#1a1405; }
+  .pstep[data-s=done] .n { background:var(--ok); color:#06210d; }
+  .pstep[data-s=failed] { border-color:rgba(248,81,73,.5); background:var(--bad-bg); } .pstep[data-s=failed] .n, .pstep[data-s=stopped] .n { background:var(--bad); color:#2a0605; }
+  .arrow { color:var(--faint); font-size:12px; }
+  .dot { width:7px; height:7px; border-radius:50%; background:var(--muted); flex:none; } .dot.claude { background:var(--claude); } .dot.codex { background:var(--codex); }
+
+  .tabs { display:flex; align-items:stretch; gap:2px; padding:0 10px; border-bottom:1px solid var(--line); background:var(--panel); }
+  .tab { background:transparent; color:var(--muted); border-radius:0; padding:10px 14px; font-weight:600; border-bottom:2px solid transparent; }
+  .tab:hover:not(:disabled) { color:var(--text); filter:none; }
+  .tab[aria-selected=true] { color:var(--text); border-bottom-color:var(--accent); }
+  .tab .count { font-size:11px; color:var(--faint); font-weight:500; }
+  .tabs .spacer { flex:1; }
+  .tabs .tools-right { display:flex; align-items:center; gap:4px; }
+  .pane { flex:1; min-height:0; display:flex; flex-direction:column; }
+  .empty-pane { margin:auto; text-align:center; color:var(--muted); max-width:360px; padding:24px; }
+  .empty-pane b { display:block; color:var(--text); font-size:15px; margin-bottom:4px; }
+
+  /* Preview */
+  .addr { display:flex; align-items:center; gap:6px; padding:7px 10px; border-bottom:1px solid var(--line); background:var(--panel); }
+  .addr .url { flex:1; font:12px var(--mono); color:var(--muted); background:var(--bg); border:1px solid var(--line); border-radius:99px; padding:4px 12px;
+               overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #frame { flex:1; width:100%; border:0; background:#fff; }
+
+  /* Code */
+  .ide { flex:1; min-height:0; display:grid; grid-template-columns:280px minmax(0,1fr); }
+  /* Explorer, modelled on VS Code's */
+  .explorer { border-right:1px solid var(--line); background:#13161d; display:flex; flex-direction:column; min-height:0; user-select:none; }
+  .ex-title { padding:10px 12px 6px 20px; font-size:11px; font-weight:400; letter-spacing:.04em; color:#bbbbbb; text-transform:uppercase; }
+  .ex-root { display:flex; align-items:center; height:24px; padding:0 4px 0 2px; font-size:11px; font-weight:700; letter-spacing:.02em; color:#cccccc;
+             text-transform:uppercase; cursor:pointer; }
+  .ex-root .chev { width:20px; display:grid; place-items:center; color:#c5c5c5; transition:transform .1s; }
+  .ex-root.closed .chev { transform:rotate(-90deg); }
+  .ex-root .label { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ex-actions { display:flex; gap:0; opacity:0; transition:opacity .1s; }
+  .explorer:hover .ex-actions, .ex-actions:focus-within { opacity:1; }
+  .ex-actions button { padding:3px; border-radius:4px; background:transparent; color:#c5c5c5; }
+  .ex-actions button:hover:not(:disabled) { background:#2a2f3b; filter:none; }
+  .ex-actions svg { width:16px; height:16px; display:block; }
+  #tree { flex:1; overflow:auto; padding-bottom:16px; font-size:13px; outline:none; }
+  #tree.closed { display:none; }
+  .node { display:flex; align-items:center; height:22px; padding-right:10px; cursor:pointer; white-space:nowrap; color:#cccccc; border:1px solid transparent; }
+  .node:hover { background:#1f232d; }
+  .node.sel { background:#2b2f3d; color:#fff; }
+  #tree:focus-within .node.sel, #tree:focus .node.sel { border-color:var(--accent); background:#2d2a45; }
+  .node .guide { width:12px; height:22px; flex:none; position:relative; }
+  .node .guide::before { content:""; position:absolute; left:11px; top:0; bottom:0; border-left:1px solid #2c303a; }
+  #tree:hover .node .guide::before { border-left-color:#3b404c; }
+  .node .pad { width:8px; flex:none; }
+  .node .tw { width:16px; height:22px; flex:none; display:grid; place-items:center; color:#c5c5c5; }
+  .node .tw svg { width:16px; height:16px; transition:transform .1s; }
+  .node.closed .tw svg { transform:rotate(-90deg); }
+  .node .ic { width:16px; flex:none; text-align:center; font:700 10px/1 "Segoe UI","Segoe UI Symbol",system-ui,sans-serif; margin-right:6px; letter-spacing:-.04em; }
+  .node .name { overflow:hidden; text-overflow:ellipsis; padding-left:2px; }
+  .node.dimmed .name { color:#8b8f98; }
+  .node.loading .name { color:var(--faint); font-style:italic; }
+  .fi { font:700 8.5px/1 var(--mono); width:22px; text-align:center; padding:3px 0; border-radius:3px; flex:none; color:var(--muted); text-transform:uppercase; }
+  .editor-wrap { display:flex; flex-direction:column; min-width:0; min-height:0; }
+  .ftabs { display:flex; align-items:center; gap:8px; padding:0 8px 0 0; border-bottom:1px solid var(--line); background:var(--panel); min-height:37px; }
+  .ftab { display:flex; align-items:center; gap:7px; padding:8px 14px; background:var(--bg); border-right:1px solid var(--line); border-top:2px solid var(--accent); font-size:13px; }
+  .ftab .dirty { width:8px; height:8px; border-radius:50%; background:var(--text); }
+  .crumbs { flex:1; font-size:12px; color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #monaco, #viewer { flex:1; min-height:0; }
+  #viewer { overflow:auto; display:grid; place-items:center; padding:20px; background:var(--bg); }
+  #viewer img { max-width:100%; max-height:100%; border-radius:var(--r-sm); border:1px solid var(--line-2); }
+  #plain { flex:1; width:100%; border:0; border-radius:0; resize:none; font:13px/1.6 var(--mono); background:#0d1017; padding:12px 16px; }
+
+  /* Output */
+  #log { flex:1; margin:0; min-height:0; padding:14px 18px; overflow:auto; white-space:pre-wrap; word-break:break-word; font-size:12.5px; line-height:1.6; color:#c9d1d9; background:#07090d; }
+  #log:empty::before { content:"The agents' output will stream here while a build runs."; color:var(--faint); }
+
+  .toast { position:fixed; bottom:16px; right:16px; background:var(--panel-3); border:1px solid var(--line-2); padding:9px 14px; border-radius:var(--r-sm); font-size:13px;
+           box-shadow:0 8px 24px rgba(0,0,0,.4); z-index:10; }
+  .toast.err { color:var(--bad); border-color:rgba(248,81,73,.5); }
+
+  @media (max-width:980px) {
+    body { grid-template-columns:minmax(0,1fr); grid-template-rows:auto 70vh 90vh; overflow:auto; height:auto; }
+    .activity { flex-direction:row; padding:6px 10px; border-right:0; border-bottom:1px solid var(--line); }
+    .logo { margin:0 8px 0 0; } .act[aria-selected=true]::before { display:none; }
+    .side { border-right:0; border-bottom:1px solid var(--line); }
+    .ide { grid-template-columns:minmax(0,1fr); grid-template-rows:180px minmax(0,1fr); }
+    .explorer { border-right:0; border-bottom:1px solid var(--line); }
+    .topbar { flex-wrap:wrap; } .pipeline { justify-content:flex-start; }
+  }
+  @media (prefers-reduced-motion:reduce) { * { animation:none !important; transition:none !important; } }
 </style>
 </head>
 <body>
-<aside>
-  <h1><span>&#9835;</span> Orchestra</h1>
-  <label>Job
-    <textarea id="job" placeholder="e.g. make a space shooter game"></textarea></label>
-  <label>Project folder
-    <input id="dir" placeholder="Auto: projects/&lt;job-name&gt;, or a full path"></label>
-  <label>Flow
-    <select id="flow"><option value="">Auto (pick by keywords)</option></select></label>
-  <label>Project rules
-    <textarea id="rules" style="min-height:80px" placeholder="Rules for this project, e.g.&#10;- Use TypeScript&#10;- Mobile-first, touch controls&#10;- No external libraries"></textarea></label>
-  <div class="hint">Saved as RULES.md in the project folder. Leave empty to keep the folder's existing rules.</div>
-  <section>
-    <div class="skills-head"><h2>Skills</h2><span><button class="link" id="uploadBtn">Upload .md</button>&nbsp;&nbsp;<button class="link" id="newSkill">+ New skill</button></span></div>
+<nav class="activity" aria-label="Views">
+  <div class="logo" aria-hidden="true">&#9835;</div>
+  <button class="act" id="actChat" aria-selected="true" title="Chat">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg></button>
+  <button class="act" id="actSkills" aria-selected="false" title="Skills">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/></svg></button>
+</nav>
+
+<aside class="side">
+  <!-- Chat view -->
+  <div id="chatView" class="side" style="border:0;flex:1">
+    <div class="side-head">
+      <select id="sessionSel" aria-label="Chats"></select>
+      <button class="icon" id="newChat" title="New chat">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+      <button class="icon" id="delChat" title="Delete this chat">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+    </div>
+    <div class="proj"><span>Project</span><select id="projectSel" aria-label="Project for this chat"></select></div>
+    <div id="messages" aria-live="polite"></div>
+    <div class="composer">
+      <div class="box">
+        <textarea id="input" rows="1" placeholder="Ask anything, or describe what to build..."></textarea>
+        <div class="box-foot"><span>Sonnet replies. Builds run Fable &rarr; Opus &rarr; &hellip;</span><button id="send">Send</button></div>
+      </div>
+    </div>
+  </div>
+  <!-- Skills view -->
+  <div id="skillsView" class="side" style="border:0;flex:1" hidden>
+    <div class="side-head"><b style="flex:1;padding-left:4px">Skills</b>
+      <button class="ghost sm" id="uploadBtn">Upload .md</button><button class="sm" id="newSkill">+ New</button></div>
     <input type="file" id="uploadSkill" accept=".md,.txt,text/markdown,text/plain" hidden>
-    <div id="skills"><span class="muted">No skills yet.</span></div>
-    <div id="editor" hidden>
-      <input id="skillName" placeholder="Skill name, e.g. pixel-art-style" aria-label="Skill name">
-      <textarea id="skillContent" placeholder="What should the agents know or do?&#10;e.g. Use a 16-color pixel palette, 32x32 sprites, crisp scaling (no blur)." aria-label="Skill content"></textarea>
-      <div class="row"><button id="saveSkill">Save skill</button><button class="ghost" id="cancelSkill">Cancel</button><button class="ghost danger" id="deleteSkill">Delete</button></div>
+    <div class="skills-view">
+      <p class="intro">Reusable guidance for the agents. Sonnet picks the ones that fit each build automatically.</p>
+      <div id="editor-skill" hidden>
+        <input id="skillName" placeholder="Skill name, e.g. pixel-art-style" aria-label="Skill name">
+        <textarea id="skillContent" placeholder="What should the agents know or do?" aria-label="Skill content"></textarea>
+        <div class="row"><button class="sm" id="saveSkill">Save skill</button><button class="ghost sm" id="cancelSkill">Cancel</button>
+          <button class="ghost sm danger" id="deleteSkill" style="margin-left:auto">Delete</button></div>
+      </div>
+      <div id="skills" style="display:flex;flex-direction:column;gap:6px"></div>
     </div>
-  </section>
-  <button id="run">Run</button>
-  <div id="msg" class="muted" role="status"></div>
-  <section class="agents"><h2>Agents</h2><div id="agents"></div></section>
-  <section class="flows"><h2>Flows</h2><div id="flows"></div></section>
-  <p class="muted" style="font-size:12px;margin:0">Change who does what in <code>flows.json</code>, then restart Orchestra.</p>
+  </div>
 </aside>
+
 <main>
-  <section>
-    <h2 id="title">Steps</h2>
-    <div id="steps" class="steps"><span class="muted">Run a job to watch each agent take its turn.</span></div>
+  <div class="topbar">
+    <div class="ptitle"><b id="ptitle">No project yet</b><span id="psub">Describe what to build in the chat</span></div>
+    <div class="pipeline" id="pipeline"></div>
+    <button class="stop sm" id="stopBuild" hidden>&#9632;&nbsp; Stop build</button>
+  </div>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" data-tab="preview" aria-selected="true">Preview</button>
+    <button class="tab" role="tab" data-tab="code" aria-selected="false">Code</button>
+    <button class="tab" role="tab" data-tab="output" aria-selected="false">Output <span class="count" id="logCount"></span></button>
+    <span class="spacer"></span>
+    <span class="tools-right"><button class="icon sm" id="openFolder" title="Open the project folder in File Explorer">Open folder</button></span>
+  </div>
+
+  <section class="pane" id="pane-preview">
+    <div class="addr">
+      <button class="icon" id="reloadPreview" title="Reload">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
+      <div class="url" id="purl">No preview</div>
+      <button class="icon" id="popPreview" title="Open in a new window">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></button>
+    </div>
+    <iframe id="frame" title="Preview" sandbox="allow-scripts allow-same-origin allow-pointer-lock allow-forms allow-modals allow-popups" hidden></iframe>
+    <div class="empty-pane" id="noPreview"><b>Nothing to preview yet</b>When the project has an index.html, it runs here.</div>
   </section>
-  <section id="results" hidden>
-    <h2>Output</h2>
-    <div class="results">
-      <img id="thumb" hidden alt="Generated thumbnail">
-      <div class="files" id="files"></div>
+
+  <section class="pane" id="pane-code" hidden>
+    <div class="ide">
+      <div class="explorer">
+        <div class="ex-title">Explorer</div>
+        <div class="ex-root" id="exRoot">
+          <span class="chev"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"/></svg></span>
+          <span class="label" id="exTitle">No project</span>
+          <span class="ex-actions">
+            <button id="newFile" title="New File..."><svg viewBox="0 0 16 16" fill="currentColor"><path d="M9.5 1.1l3.4 3.5.1.4v2h-1V6H8V2H3v11h4v1H2.5l-.5-.5v-12l.5-.5h6.7l.3.1zM9 2v3h2.9L9 2zm4 14h-1v-3H9v-1h3V9h1v3h3v1h-3v3z"/></svg></button>
+            <button id="newFolder" title="New Folder..."><svg viewBox="0 0 16 16" fill="currentColor"><path d="M14 4H9.618l-1-2H2a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h5v-1H2V7h12v1h1V5a1 1 0 0 0-1-1zM2 6V3h6.382l1 2H14v1H2zm11 4h1v2h2v1h-2v2h-1v-2h-2v-1h2v-2z"/></svg></button>
+            <button id="refreshTree" title="Refresh Explorer"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M5.563 2.516A6.001 6.001 0 0 0 8 14 6 6 0 0 0 9.832 2.285l-.302.953A5.002 5.002 0 0 1 8 13a5 5 0 0 1-2.88-9.088l.443-1.396zM5 2V1H2v1h1.858L2.5 3.5l.707.707L5 2.414V5h1V2H5z" transform="translate(16 0) scale(-1 1)"/></svg></button>
+            <button id="collapseAll" title="Collapse Folders in Explorer"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M9 9H4v1h5V9z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M5 3l1-1h7l1 1v7l-1 1h-2v2l-1 1H3l-1-1V6l1-1h2V3zm1 2h4l1 1v4h2V3H6v2zm4 1H3v7h7V6z"/></svg></button>
+          </span>
+        </div>
+        <div id="tree" tabindex="0" role="tree" aria-label="Files"></div>
+      </div>
+      <div class="editor-wrap">
+        <div class="ftabs" id="ftabs" hidden>
+          <div class="ftab"><span class="fi" id="ftabIcon"></span><span id="ftabName"></span><span class="dirty" id="dirtyDot" hidden></span></div>
+          <span class="crumbs" id="crumbs"></span>
+          <button class="sm" id="saveFile" disabled>Save</button>
+        </div>
+        <div id="monaco" hidden></div>
+        <textarea id="plain" spellcheck="false" hidden></textarea>
+        <div id="viewer" hidden></div>
+        <div class="empty-pane" id="noFile"><b>No file open</b>Pick a file in the explorer. Edit it here and press Ctrl+S to save.</div>
+      </div>
     </div>
   </section>
-  <pre id="log" aria-label="Agent output"></pre>
+
+  <section class="pane" id="pane-output" hidden>
+    <div class="addr"><span class="url" id="outTitle" style="border:0;background:none;padding-left:4px">Agent output</span>
+      <button class="ghost sm" id="copyLog">Copy</button></div>
+    <pre id="log" aria-label="Agent output"></pre>
+  </section>
 </main>
+
 <script>
   const $ = id => document.getElementById(id);
-  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
-  const fmt = ms => { const s = Math.round(ms / 1000); return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`; };
-  let current = null, timer = null;
-  const startedAt = {};
-
-  fetch('/api/config').then(r => r.json()).then(cfg => {
-    $('agents').innerHTML = Object.entries(cfg.agents).map(([n, a]) =>
-      `<div><span>${esc(n)}</span><code>${esc(a.model)}</code></div>`).join('');
-    for (const n of Object.keys(cfg.flows)) $('flow').add(new Option(n, n));
-    $('flows').innerHTML = Object.entries(cfg.flows).map(([n, f]) =>
-      `<div><b>${esc(n)}</b>: ${f.steps.map(s => `${esc(s.name)} &rarr; ${esc(s.agent)}`).join(', ')}` +
-      (f.match?.length ? ` <i>(job mentions: ${f.match.map(esc).join(', ')})</i>` : ' <i>(everything else)</i>') + '</div>').join('');
-  });
-
-  // --- Skills: tick the ones to apply; ticks are remembered on this computer.
-  const store = { get: () => { try { return JSON.parse(localStorage.getItem('orchestra.skills')) || []; } catch { return []; } },
-                  set: v => { try { localStorage.setItem('orchestra.skills', JSON.stringify(v)); } catch {} } };
-  let skills = [];
-  const ticked = () => [...document.querySelectorAll('#skills input:checked')].map(c => c.value);
-  async function loadSkills() {
-    skills = await fetch('/api/skills').then(r => r.json());
-    const on = store.get();
-    $('skills').innerHTML = skills.length ? skills.map((s, i) => `<div>
-        <label><input type="checkbox" value="${esc(s.name)}" ${on.includes(s.name) ? 'checked' : ''}>${esc(s.name)}</label>
-        <button class="link" data-edit="${i}">edit</button></div>`).join('')
-      : '<span class="muted">No skills yet. Add one to teach the agents your way of working.</span>';
-    $('skills').onchange = () => store.set(ticked());
-    $('skills').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => openEditor(skills[b.dataset.edit]));
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const fmt = ms => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`; };
+  const store = { get(k, d) { try { return JSON.parse(localStorage.getItem('orchestra.' + k)) ?? d; } catch { return d; } },
+                  set(k, v) { try { localStorage.setItem('orchestra.' + k, JSON.stringify(v)); } catch {} } };
+  async function api(path, body) {
+    const r = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `Request failed (${r.status})`);
+    return j;
   }
-  function openEditor(skill) {
-    $('editor').hidden = false; $('deleteSkill').hidden = !skill;
+  function toast(text, err) {
+    const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.textContent = text; document.body.append(t);
+    setTimeout(() => t.remove(), 3500);
+  }
+  const extOf = p => (String(p).match(/\.([a-z0-9]+)$/i)?.[1] ?? '').toLowerCase();
+  const md = t => (window.marked && window.DOMPurify)
+    ? DOMPurify.sanitize(marked.parse(t, { gfm: true, breaks: true }), { ADD_ATTR: ['target'] })
+    : `<p>${esc(t).replace(/\n/g, '<br>')}</p>`;
+  // Hides the build-request block while it streams in.
+  const visible = t => {
+    const i = t.indexOf('<orchestra-run'); if (i >= 0) return t.slice(0, i);
+    const tail = t.slice(t.lastIndexOf('<')); return tail && '<orchestra-run>'.startsWith(tail) ? t.slice(0, -tail.length) : t;
+  };
+
+  let cfg = null, session = null, sessions = [], projects = [], tree = [], live = null, runInfo = null, runTimer = null;
+
+  // ---------- Views ----------
+  function showView(v) {
+    $('chatView').hidden = v !== 'chat'; $('skillsView').hidden = v !== 'skills';
+    $('actChat').setAttribute('aria-selected', v === 'chat'); $('actSkills').setAttribute('aria-selected', v === 'skills');
+  }
+  $('actChat').onclick = () => showView('chat');
+  $('actSkills').onclick = () => { showView('skills'); loadSkills(); };
+
+  let tab = store.get('tab', 'preview');
+  function showTab(t) {
+    tab = t; store.set('tab', t);
+    document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t));
+    for (const n of ['preview', 'code', 'output']) $('pane-' + n).hidden = n !== t;
+    if (t === 'code') ensureEditor();
+    if (t === 'preview' && previewStale) loadPreview();
+  }
+  document.querySelectorAll('.tab').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+  // ---------- Sessions ----------
+  async function refreshSessions() {
+    sessions = await api('/api/sessions');
+    $('sessionSel').innerHTML = sessions.map(s => `<option value="${esc(s.id)}">${esc(s.title || 'New chat')}</option>`).join('');
+    if (session) $('sessionSel').value = session.id;
+  }
+  async function refreshProjects() {
+    projects = await api('/api/projects');
+    const cur = session?.project ?? '';
+    $('projectSel').innerHTML = `<option value="">None yet (a build creates one)</option>` +
+      [...new Set([...projects, ...(cur ? [cur] : [])])].map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+    $('projectSel').value = cur;
+  }
+  async function openSession(id) {
+    const prevProject = session?.project;
+    session = await api('/api/session?id=' + encodeURIComponent(id));
+    store.set('session', id);
+    live = session.replying ? { text: '', tools: [] } : null;
+    $('sessionSel').value = id;
+    setReplying(!!session.replying);
+    renderChat(true);
+    await refreshProjects();
+    renderTop();
+    if (prevProject !== session.project) { closeFile(true); await refreshTree(); loadPreview(); }
+  }
+  async function reloadSession() {
+    if (!session) return;
+    const prevProject = session.project;
+    try { session = await api('/api/session?id=' + encodeURIComponent(session.id)); } catch { return; }
+    renderChat();
+    renderTop();
+    if (prevProject !== session.project) { await refreshProjects(); closeFile(true); await refreshTree(); loadPreview(); }
+  }
+  async function newChat(project = null) {
+    const s = await api('/api/sessions', { project });
+    await refreshSessions();
+    await openSession(s.id);
+    $('input').focus();
+  }
+  $('sessionSel').onchange = () => openSession($('sessionSel').value);
+  $('newChat').onclick = () => newChat();
+  $('delChat').onclick = async () => {
+    if (!session || !confirm(`Delete the chat "${session.title || 'New chat'}"? The project files stay.`)) return;
+    try { await api('/api/session', { id: session.id, delete: true }); session = null; await boot(); } catch (e) { toast(e.message, true); }
+  };
+  $('projectSel').onchange = async () => {
+    try { await api('/api/session', { id: session.id, project: $('projectSel').value || null }); await reloadSession(); }
+    catch (e) { toast(e.message, true); $('projectSel').value = session.project ?? ''; }
+  };
+
+  // ---------- Chat rendering ----------
+  const STATUS = { running: 'Building...', done: 'Build finished', failed: 'Build failed', stopped: 'Build stopped', interrupted: 'Build interrupted' };
+  function buildHtml(m, i) {
+    const live = runInfo && runInfo.runId === m.runId && runInfo.running;
+    let sub = `${esc(m.flow)} flow &middot; ${esc(m.project)}`;
+    if (live) { const k = runInfo.status.indexOf('running'); if (k >= 0) sub += ` &middot; step ${k + 1}/${runInfo.steps.length}: ${esc(runInfo.steps[k].name)} (${esc(runInfo.steps[k].agent)})`; }
+    if (m.status === 'failed' && m.failedStep) sub += ` &middot; at "${esc(m.failedStep)}"`;
+    const actions = m.status === 'running'
+      ? `<button class="ghost sm" data-act="output">Watch output</button><button class="stop sm" data-act="stop">Stop</button>`
+      : m.status === 'done'
+        ? `<button class="sm" data-act="preview">Open preview</button><button class="ghost sm" data-act="code">View code</button>`
+        : `<button class="ghost sm" data-act="retry" data-i="${i}">Retry${m.failedStep ? ` from ${esc(m.failedStep)}` : ''}</button><button class="ghost sm" data-act="output">See output</button>`;
+    return `<div class="build" data-status="${esc(m.status)}">
+      <div class="build-head">${m.status === 'running' ? '<span class="spin"></span>' : ''}<b>${STATUS[m.status] ?? esc(m.status)}</b></div>
+      <div class="build-sub">${sub}</div>
+      ${m.skills?.length ? `<div class="chips">${m.skills.map(s => `<span class="chip">${esc(s)}</span>`).join('')}</div>` : ''}
+      <details><summary>Brief for the planner</summary><div class="brief">${esc(m.brief)}</div></details>
+      <div class="row">${actions}</div></div>`;
+  }
+  function msgHtml(m, i) {
+    if (m.role === 'user') return `<div class="msg user"><div class="bubble">${esc(m.text)}</div></div>`;
+    if (m.role === 'build') return buildHtml(m, i);
+    return `<div class="msg ai"><div class="avatar" title="Sonnet">S</div><div class="ai-body">
+      ${m.text ? `<div class="md">${md(m.text)}</div>` : ''}
+      ${m.error ? `<div class="note err">${esc(m.error)}</div>` : ''}${m.note ? `<div class="note info">${esc(m.note)}</div>` : ''}</div></div>`;
+  }
+  const liveInner = () => `${live.tools.length ? `<div class="tools">${live.tools.slice(-6).map(t => `<div class="tool">${esc(t)}</div>`).join('')}</div>` : ''}
+      ${visible(live.text).trim() ? `<div class="md">${md(visible(live.text))}</div>` : '<div class="typing"><i></i><i></i><i></i></div>'}`;
+  function welcomeHtml() {
+    const sugs = session?.project
+      ? ['Explain how this project works', 'What should I improve next?', 'Add a pause menu and sound toggle']
+      : ['Make a neon snake game', 'Build a simple to-do app', 'What can Orchestra do?'];
+    return `<div class="welcome"><h2>${session?.project ? esc(session.project) : 'What do you want to build?'}</h2>
+      <p>Chat with Sonnet. Ask questions, or ask for something to be built and the agents will take it from there.</p>
+      <div class="sugs">${sugs.map(s => `<button class="sug" data-sug="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>`;
+  }
+  function renderChat(force) {
+    const box = $('messages'), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+    const parts = (session?.messages ?? []).map(msgHtml);
+    if (live) parts.push(`<div class="msg ai"><div class="avatar">S</div><div class="ai-body" id="live">${liveInner()}</div></div>`);
+    box.innerHTML = parts.length ? parts.join('') : welcomeHtml();
+    box.querySelectorAll('.md a').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
+    if (force || atBottom) box.scrollTop = box.scrollHeight;
+  }
+  let liveFrame = 0;
+  function updateLive() {
+    if (liveFrame) return;
+    liveFrame = requestAnimationFrame(() => {
+      liveFrame = 0;
+      const el = $('live'); if (!el || !live) return renderChat();
+      const box = $('messages'), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+      el.innerHTML = liveInner();
+      if (atBottom) box.scrollTop = box.scrollHeight;
+    });
+  }
+  $('messages').onclick = async e => {
+    const sug = e.target.closest('[data-sug]');
+    if (sug) { $('input').value = sug.dataset.sug; autosize(); $('input').focus(); return; }
+    const b = e.target.closest('[data-act]'); if (!b) return;
+    const act = b.dataset.act;
+    if (act === 'output') showTab('output');
+    if (act === 'preview') showTab('preview');
+    if (act === 'code') showTab('code');
+    if (act === 'stop') stopBuild();
+    if (act === 'retry') {
+      const m = session.messages[b.dataset.i];
+      try { await api('/api/run', { job: m.brief, project: m.project, flow: m.flow, from: m.failedStep || undefined, skills: m.skills, sessionId: session.id }); showTab('output'); }
+      catch (err) { toast(err.message, true); }
+    }
+  };
+
+  // ---------- Composer ----------
+  let replying = false;
+  function setReplying(on) {
+    replying = on;
+    $('send').textContent = on ? 'Stop' : 'Send';
+    $('send').className = on ? 'stop' : '';
+    $('send').style.padding = '6px 14px';
+  }
+  const autosize = () => { const t = $('input'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 220) + 'px'; };
+  $('input').addEventListener('input', autosize);
+  $('input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!replying) send(); } });
+  $('send').onclick = () => replying ? api('/api/chat/stop', { id: session.id }).catch(() => {}) : send();
+  async function send() {
+    const text = $('input').value.trim();
+    if (!text || !session) return;
+    $('input').value = ''; autosize();
+    session.messages.push({ role: 'user', text });
+    live = { text: '', tools: [] }; setReplying(true); renderChat(true);
+    try { await api('/api/chat', { id: session.id, text }); }
+    catch (e) { live = null; setReplying(false); session.messages.pop(); renderChat(); $('input').value = text; toast(e.message, true); }
+  }
+
+  // ---------- Top bar: project + build pipeline ----------
+  function renderTop() {
+    const p = session?.project;
+    $('ptitle').textContent = p || 'No project yet';
+    const r = runInfo;
+    const mine = r && r.project === p;
+    $('psub').textContent = r?.running ? (mine ? 'Building now' : `Building "${r.project}" in another chat`)
+      : p ? (mine && r ? (r.ok ? 'Last build finished' : r.stopped ? 'Last build stopped' : 'Last build failed') : 'Ready') : 'Describe what to build in the chat';
+    $('stopBuild').hidden = !r?.running;
+    $('pipeline').innerHTML = r ? r.steps.map((s, i) => `${i ? '<span class="arrow">&rarr;</span>' : ''}
+      <span class="pstep" data-s="${r.status[i]}" title="${esc(s.agent)} &middot; ${esc(s.model)}"><span class="n">${i + 1}</span>
+        <span class="dot ${esc(s.cli)}"></span>${esc(s.name)}<small id="t${i}">${r.times[i] ? fmt(r.times[i]) : ''}</small></span>`).join('') : '';
+    $('openFolder').disabled = !p;
+  }
+  async function stopBuild() { try { await api('/api/stop', {}); } catch (e) { toast(e.message, true); } }
+  $('stopBuild').onclick = stopBuild;
+  $('openFolder').onclick = () => session?.project && api('/api/open-folder', { project: session.project });
+
+  // ---------- Preview ----------
+  let previewStale = true, previewUrl = null;
+  function loadPreview() {
+    previewStale = false;
+    const p = session?.project;
+    const entry = tree.find(f => f.path === 'index.html') ? 'index.html' : tree.find(f => f.type === 'file' && /\.html?$/i.test(f.path))?.path;
+    previewUrl = p && entry && cfg ? `http://127.0.0.1:${cfg.previewPort}/${encodeURIComponent(p)}/${entry.split('/').map(encodeURIComponent).join('/')}` : null;
+    $('frame').hidden = !previewUrl; $('noPreview').hidden = !!previewUrl;
+    $('purl').textContent = previewUrl ? `${p}/${entry}` : 'No preview';
+    if (previewUrl) $('frame').src = previewUrl + '?t=' + Date.now(); else $('frame').removeAttribute('src');
+  }
+  const refreshPreview = () => { if (tab === 'preview') loadPreview(); else previewStale = true; };
+  $('reloadPreview').onclick = loadPreview;
+  $('popPreview').onclick = () => previewUrl && window.open(previewUrl, '_blank');
+
+  // ---------- Code: explorer + editor ----------
+  // Folders load their children when opened, so big folders (node_modules) stay fast.
+  const kids = new Map();          // folder path ('' = project root) -> its entries
+  let expanded = new Set(), treeProject = null, selPath = null, rootOpen = true;
+  const saveExpanded = () => store.set('expanded:' + treeProject, [...expanded]);
+  const findEntry = path => { const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''; return kids.get(dir)?.find(e => e.path === path); };
+  const loadDir = async dir => kids.set(dir, await api(`/api/tree?project=${encodeURIComponent(session.project)}&dir=${encodeURIComponent(dir)}`));
+  async function refreshTree() {
+    const p = session?.project ?? null;
+    if (p !== treeProject) { treeProject = p; expanded = new Set(store.get('expanded:' + p, [])); selPath = null; }
+    kids.clear();
+    if (p) {
+      try { await loadDir(''); } catch { kids.set('', []); }
+      await Promise.all([...expanded].map(d => loadDir(d).catch(() => expanded.delete(d))));
+    }
+    tree = kids.get('') ?? [];
+    renderTree();
+  }
+
+  // File icons in the spirit of VS Code's default (Seti) theme.
+  const ICON = {
+    ts: ['TS', '#519aba'], tsx: ['TS', '#519aba'], 'd.ts': ['TS', '#519aba'], js: ['JS', '#cbcb41'], mjs: ['JS', '#cbcb41'], cjs: ['JS', '#cbcb41'], jsx: ['JS', '#519aba'],
+    json: ['{}', '#cbcb41'], jsonc: ['{}', '#cbcb41'], html: ['&lt;&gt;', '#e37933'], htm: ['&lt;&gt;', '#e37933'], css: ['#', '#519aba'], scss: ['&#167;', '#f55385'],
+    sass: ['&#167;', '#f55385'], less: ['#', '#519aba'], md: ['&#8595;', '#519aba'], mdx: ['&#8595;', '#519aba'], txt: ['&#8801;', '#8a8f98'], log: ['&#8801;', '#8a8f98'],
+    png: ['&#9635;', '#a074c4'], jpg: ['&#9635;', '#a074c4'], jpeg: ['&#9635;', '#a074c4'], gif: ['&#9635;', '#a074c4'], webp: ['&#9635;', '#a074c4'], ico: ['&#9635;', '#cbcb41'],
+    svg: ['&#9672;', '#ffb13b'], py: ['Py', '#519aba'], csv: ['&#9638;', '#8dc149'], xlsx: ['&#9638;', '#8dc149'], yml: ['&#8801;', '#a074c4'], yaml: ['&#8801;', '#a074c4'],
+    sh: ['&gt;_', '#8dc149'], ps1: ['&gt;_', '#519aba'], bat: ['&gt;_', '#8dc149'], cmd: ['&gt;_', '#8dc149'], mp3: ['&#9834;', '#e37933'], wav: ['&#9834;', '#e37933'],
+    ogg: ['&#9834;', '#e37933'], mp4: ['&#9654;', '#e37933'], glb: ['&#9670;', '#4fc1ff'], gltf: ['&#9670;', '#4fc1ff'], wasm: ['&#9636;', '#a074c4'], zip: ['&#9636;', '#cbcb41'],
+    prisma: ['&#9650;', '#4fc1ff'], sql: ['&#9636;', '#f55385'], xml: ['&lt;&gt;', '#e37933'], vue: ['V', '#8dc149'], php: ['php', '#a074c4'], java: ['J', '#cc3e44'],
+    cs: ['C#', '#519aba'], go: ['go', '#519aba'], rs: ['rs', '#e37933'], lock: ['&#128274;', '#8a8f98'], toml: ['&#8801;', '#8a8f98'],
+  };
+  function iconFor(name) {
+    const n = name.toLowerCase();
+    if (/^readme(\.|$)/.test(n)) return ['&#9432;', '#519aba'];
+    if (/^(makefile|gnumakefile)$/.test(n)) return ['M', '#e37933'];
+    if (/^dockerfile/.test(n)) return ['&#9670;', '#519aba'];
+    if (/^license|^licence/.test(n)) return ['&#167;', '#cbcb41'];
+    if (/^\.env/.test(n)) return ['&#9881;', '#8a8f98'];
+    if (/^\.(git|docker|prettier|eslint|npm|vscode)?ignore$|^\.gitattributes$|^\.gitkeep$/.test(n)) return ['&#9670;', '#41535b'];
+    if (/^\.(editorconfig|prettierrc|eslintrc|babelrc|npmrc|nvmrc|browserslistrc)/.test(n)) return ['&#9881;', '#8a8f98'];
+    if (n.endsWith('.d.ts')) return ICON['d.ts'];
+    return ICON[extOf(n)] ?? ['&#8801;', '#8a8f98'];
+  }
+  const CHEV = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"/></svg>';
+  function rowsFor(dir, depth, out) {
+    for (const e of kids.get(dir) ?? []) {
+      const isDir = e.type === 'dir', open = isDir && expanded.has(e.path);
+      const guides = '<span class="guide"></span>'.repeat(depth);
+      const [ic, color] = isDir ? ['', ''] : iconFor(e.name);
+      out.push(`<div class="node${isDir && !open ? ' closed' : ''}${e.path === selPath ? ' sel' : ''}${/^\./.test(e.name) || e.name === 'node_modules' ? ' dimmed' : ''}"
+        role="treeitem" data-path="${esc(e.path)}" data-dir="${isDir ? 1 : ''}" title="${esc(e.path)}"${isDir ? ` aria-expanded="${open}"` : ''}>
+        <span class="pad"></span>${guides}${isDir ? `<span class="tw">${CHEV}</span>` : `<span class="tw"></span><span class="ic" style="color:${color}">${ic}</span>`}
+        <span class="name">${esc(e.name)}</span></div>`);
+      if (open) {
+        if (kids.has(e.path)) rowsFor(e.path, depth + 1, out);
+        else out.push(`<div class="node loading"><span class="pad"></span>${'<span class="guide"></span>'.repeat(depth + 1)}<span class="tw"></span><span class="name">Loading...</span></div>`);
+      }
+    }
+  }
+  function renderTree() {
+    const p = session?.project;
+    $('exTitle').textContent = p || 'No project';
+    $('exRoot').classList.toggle('closed', !rootOpen); $('tree').classList.toggle('closed', !rootOpen);
+    for (const b of ['newFile', 'newFolder', 'refreshTree', 'collapseAll']) $(b).disabled = !p;
+    if (!p) { $('tree').innerHTML = '<div class="empty-pane" style="font-size:12.5px">No project yet. Start one from the chat.</div>'; return; }
+    const out = []; rowsFor('', 0, out);
+    $('tree').innerHTML = out.length ? out.join('') : '<div class="empty-pane" style="font-size:12.5px">This folder is empty.</div>';
+  }
+  async function toggleDir(path) {
+    if (expanded.has(path)) expanded.delete(path);
+    else { expanded.add(path); if (!kids.has(path)) { renderTree(); try { await loadDir(path); } catch (e) { toast(e.message, true); expanded.delete(path); } } }
+    saveExpanded(); renderTree();
+  }
+  $('tree').onclick = e => {
+    const n = e.target.closest('.node[data-path]'); if (!n) return;
+    selPath = n.dataset.path;
+    if (n.dataset.dir) toggleDir(selPath); else { renderTree(); openFile(selPath); }
+  };
+  $('exRoot').onclick = e => { if (e.target.closest('button')) return; rootOpen = !rootOpen; renderTree(); };
+  $('refreshTree').onclick = () => refreshTree();
+  $('collapseAll').onclick = () => { expanded.clear(); saveExpanded(); renderTree(); };
+  // New items go in the selected folder (or the folder of the selected file).
+  function targetDir() {
+    if (!selPath) return '';
+    return findEntry(selPath)?.type === 'dir' ? selPath : (selPath.includes('/') ? selPath.slice(0, selPath.lastIndexOf('/')) : '');
+  }
+  async function createItem(kind) {
+    const dir = targetDir();
+    const name = prompt(`New ${kind} in ${session.project}/${dir ? dir + '/' : ''}`);
+    if (!name?.trim()) return;
+    const path = (dir ? dir + '/' : '') + name.trim().replace(/\\/g, '/').replace(/^\/+/, '');
+    try {
+      if (kind === 'folder') await api('/api/mkdir', { project: session.project, path });
+      else await api('/api/file', { project: session.project, path, content: '' });
+      if (dir) expanded.add(dir);
+      for (let k = path.indexOf('/'); k > 0; k = path.indexOf('/', k + 1)) expanded.add(path.slice(0, k));
+      if (kind === 'folder') expanded.add(path);
+      saveExpanded(); selPath = path;
+      await refreshTree();
+      if (kind === 'file') openFile(path);
+    } catch (e) { toast(e.message, true); }
+  }
+  $('newFile').onclick = () => createItem('file');
+  $('newFolder').onclick = () => createItem('folder');
+
+  const MONACO = 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min';
+  let editor = null, editorReady = null, openPath = null, original = '', dirty = false, usePlain = false;
+  const LANG = { js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript', html: 'html', htm: 'html',
+    css: 'css', scss: 'scss', json: 'json', md: 'markdown', py: 'python', sh: 'shell', ps1: 'powershell', xml: 'xml', svg: 'xml', yml: 'yaml', yaml: 'yaml',
+    java: 'java', cs: 'csharp', cpp: 'cpp', c: 'c', go: 'go', rs: 'rust', php: 'php', sql: 'sql', lua: 'lua', glsl: 'cpp' };
+  const IMG = /\.(png|jpe?g|gif|webp|svg|ico)$/i, BIN = /\.(mp3|wav|ogg|mp4|webm|glb|wasm|woff2?|ttf|zip|exe|bin)$/i;
+  function ensureEditor() {
+    if (editorReady) return editorReady;
+    editorReady = new Promise(res => {
+      window.MonacoEnvironment = { getWorkerUrl: () => 'data:text/javascript;charset=utf-8,' + encodeURIComponent(
+        `self.MonacoEnvironment={baseUrl:'${MONACO}/'};importScripts('${MONACO}/vs/base/worker/workerMain.js');`) };
+      const s = document.createElement('script'); s.src = `${MONACO}/vs/loader.js`;
+      const fallback = () => { usePlain = true; res(); };
+      s.onerror = fallback;
+      s.onload = () => {
+        require.config({ paths: { vs: `${MONACO}/vs` } });
+        require(['vs/editor/editor.main'], () => {
+          monaco.editor.defineTheme('orchestra', { base: 'vs-dark', inherit: true, rules: [],
+            colors: { 'editor.background': '#0d1017', 'editor.lineHighlightBackground': '#161a23', 'editorGutter.background': '#0d1017' } });
+          editor = monaco.editor.create($('monaco'), { theme: 'orchestra', automaticLayout: true, fontSize: 13, fontFamily: 'Cascadia Code, Consolas, monospace',
+            fontLigatures: true, minimap: { enabled: true }, scrollBeyondLastLine: false, tabSize: 2, smoothScrolling: true, padding: { top: 10 } });
+          editor.onDidChangeModelContent(() => setDirty(editor.getValue() !== original));
+          editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, saveFile);
+          res();
+        }, fallback);
+      };
+      document.head.append(s);
+      setTimeout(() => { if (!editor) fallback(); }, 15000);
+    });
+    return editorReady;
+  }
+  $('plain').addEventListener('input', () => setDirty($('plain').value !== original));
+  $('plain').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveFile(); } });
+  function setDirty(d) { dirty = d; $('dirtyDot').hidden = !d; $('saveFile').disabled = !d; }
+  function closeFile(force) {
+    if (!force && dirty && !confirm('Discard unsaved changes?')) return false;
+    openPath = null; setDirty(false);
+    $('ftabs').hidden = $('monaco').hidden = $('plain').hidden = $('viewer').hidden = true; $('noFile').hidden = false;
+    return true;
+  }
+  async function openFile(path) {
+    if (path !== openPath && dirty && !confirm('Discard unsaved changes?')) return;
+    const f = findEntry(path);
+    openPath = selPath = path; setDirty(false); renderTree();
+    const name = path.split('/').at(-1), ext = extOf(name);
+    $('ftabs').hidden = false; $('noFile').hidden = true;
+    $('ftabName').textContent = name; $('ftabIcon').className = 'fi ' + ext; $('ftabIcon').textContent = ext.slice(0, 4);
+    $('crumbs').textContent = `${session.project} / ${path.split('/').join(' / ')}`;
+    const url = `/p/${encodeURIComponent(session.project)}/${path.split('/').map(encodeURIComponent).join('/')}`;
+    if (IMG.test(name) || BIN.test(name) || (f?.size ?? 0) > 2e6) {
+      $('monaco').hidden = $('plain').hidden = true; $('viewer').hidden = false; $('saveFile').hidden = true;
+      $('viewer').innerHTML = IMG.test(name) ? `<img src="${url}?t=${Date.now()}" alt="${esc(name)}">`
+        : `<div class="empty-pane"><b>${esc(name)}</b>This file can't be shown as text. <a href="${url}" target="_blank" style="color:var(--accent-2)">Open it</a></div>`;
+      return;
+    }
+    $('saveFile').hidden = false; $('viewer').hidden = true;
+    const text = await fetch(url).then(r => r.ok ? r.text() : Promise.reject(new Error('Could not read the file.'))).catch(e => { toast(e.message, true); return ''; });
+    if (openPath !== path) return;
+    original = text;
+    await ensureEditor();
+    if (usePlain) { $('monaco').hidden = true; $('plain').hidden = false; $('plain').value = text; }
+    else {
+      $('plain').hidden = true; $('monaco').hidden = false;
+      const old = editor.getModel();
+      editor.setModel(monaco.editor.createModel(text, LANG[ext] ?? 'plaintext'));
+      old?.dispose();
+    }
+    setDirty(false);
+  }
+  async function saveFile() {
+    if (!openPath || !dirty) return;
+    const content = usePlain ? $('plain').value : editor.getValue();
+    try { await api('/api/file', { project: session.project, path: openPath, content }); original = content; setDirty(false); toast(`Saved ${openPath}`); }
+    catch (e) { toast(e.message, true); }
+  }
+  $('saveFile').onclick = saveFile;
+
+  // ---------- Output ----------
+  $('copyLog').onclick = async () => {
+    try { await navigator.clipboard.writeText($('log').textContent); toast('Output copied'); } catch { toast('Could not copy', true); }
+  };
+
+  // ---------- Skills ----------
+  let skills = [];
+  async function loadSkills() {
+    skills = await api('/api/skills');
+    $('skills').innerHTML = skills.length ? skills.map((s, i) => `<div class="skill"><b title="${esc(s.name)}">${esc(s.name)}</b>
+        <button class="icon sm" data-edit="${i}">Edit</button></div>`).join('')
+      : '<span class="muted">No skills yet. Add one to teach the agents your way of working.</span>';
+    $('skills').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => openSkill(skills[b.dataset.edit]));
+  }
+  function openSkill(skill) {
+    $('editor-skill').hidden = false; $('deleteSkill').hidden = !skill;
     $('skillName').value = skill?.name ?? ''; $('skillContent').value = skill?.content ?? '';
     $('skillName').disabled = !!skill; (skill ? $('skillContent') : $('skillName')).focus();
   }
-  async function skillCall(body) {
-    const r = await fetch('/api/skills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const res = await r.json();
-    if (!r.ok) { $('msg').className = 'err'; $('msg').textContent = res.error; return null; }
-    $('editor').hidden = true; $('msg').textContent = '';
-    return res;
-  }
-  $('newSkill').onclick = () => openEditor(null);
-  // Upload fills the editor so you can review the file before saving it as a skill.
+  $('newSkill').onclick = () => openSkill(null);
   $('uploadBtn').onclick = () => $('uploadSkill').click();
   $('uploadSkill').onchange = async () => {
-    const f = $('uploadSkill').files[0];
-    if (!f) return;
-    openEditor(null);
-    $('skillName').value = f.name.replace(/\.(md|txt)$/i, '');
-    $('skillContent').value = await f.text();
-    $('uploadSkill').value = '';
+    const f = $('uploadSkill').files[0]; if (!f) return;
+    openSkill(null); $('skillName').value = f.name.replace(/\.(md|txt)$/i, ''); $('skillContent').value = await f.text(); $('uploadSkill').value = '';
   };
-  $('cancelSkill').onclick = () => $('editor').hidden = true;
+  $('cancelSkill').onclick = () => $('editor-skill').hidden = true;
   $('saveSkill').onclick = async () => {
-    const res = await skillCall({ name: $('skillName').value, content: $('skillContent').value });
-    if (res && !store.get().includes(res.name)) store.set([...store.get(), res.name]); // new skills start ticked
-    loadSkills();
+    try { await api('/api/skills', { name: $('skillName').value, content: $('skillContent').value }); $('editor-skill').hidden = true; loadSkills(); toast('Skill saved'); }
+    catch (e) { toast(e.message, true); }
   };
   $('deleteSkill').onclick = async () => {
     if (!confirm(`Delete skill "${$('skillName').value}"?`)) return;
-    if (await skillCall({ name: $('skillName').value, delete: true })) loadSkills();
+    try { await api('/api/skills', { name: $('skillName').value, delete: true }); $('editor-skill').hidden = true; loadSkills(); } catch (e) { toast(e.message, true); }
   };
-  loadSkills();
 
-  async function start(body) {
-    $('msg').className = 'muted'; $('msg').textContent = 'Starting...';
-    const r = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (!r.ok) { $('msg').className = 'err'; $('msg').textContent = (await r.json()).error; }
-  }
-  $('run').onclick = () => start({ job: $('job').value, dir: $('dir').value, flow: $('flow').value, skills: ticked(), rules: $('rules').value });
-  $('job').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $('run').click(); });
-
-  const handlers = {
+  // ---------- Live events ----------
+  const H = {
+    session(ev) { refreshSessions().catch(() => {}); if (ev.id === session?.id && !ev.deleted) reloadSession(); },
+    chat(ev) {
+      if (ev.id !== session?.id) return;
+      if (ev.kind === 'start') { if (!live) { live = { text: '', tools: [] }; renderChat(); } setReplying(true); }
+      else if (ev.kind === 'delta') { live ??= { text: '', tools: [] }; live.text += ev.text; updateLive(); }
+      else if (ev.kind === 'tool') { live ??= { text: '', tools: [] }; live.tools.push(ev.text); updateLive(); }
+      else if (ev.kind === 'done') { live = null; setReplying(false); reloadSession(); }
+    },
     start(ev) {
-      current = ev; clearInterval(timer);
-      $('run').disabled = true; $('log').textContent = ''; $('results').hidden = true;
-      $('msg').className = 'muted';
-      $('msg').textContent = `Running in ${ev.dir}\nSkills: ${ev.skills?.join(', ') || 'none'} | Project rules: ${ev.hasRules ? 'RULES.md' : 'none'}`;
-      $('msg').style.whiteSpace = 'pre-line';
-      $('title').textContent = `Steps - flow "${ev.flow}"`;
-      $('steps').innerHTML = ev.steps.map((s, i) => `${i ? '<span class="arrow">&rarr;</span>' : ''}
-        <div class="step" id="s${i}" data-s="pending">
-          <div class="top"><b>${esc(s.name)}</b><span class="badge">waiting</span></div>
-          <div class="agent">${esc(s.agent)}</div><div class="model">${esc(s.model)}</div><div class="time"></div>
-        </div>`).join('');
+      runInfo = { ...ev, status: ev.steps.map(() => 'pending'), times: [], startedAt: [], running: true };
+      $('log').textContent = ''; $('logCount').textContent = '';
+      $('outTitle').textContent = `Agent output: ${ev.project}`;
+      renderTop(); renderChat();
     },
     step(ev) {
-      const el = $('s' + ev.index), time = el.querySelector('.time');
-      el.dataset.s = ev.status; el.querySelector('.badge').textContent = ev.status;
+      if (!runInfo) return;
+      runInfo.status[ev.index] = ev.status;
+      clearInterval(runTimer);
       if (ev.status === 'running') {
-        startedAt[ev.index] = ev.at; clearInterval(timer);
-        const tick = () => time.textContent = fmt(Date.now() - ev.at); tick();
-        timer = setInterval(tick, 1000);
-      } else {
-        clearInterval(timer); time.textContent = fmt(ev.at - startedAt[ev.index]);
-      }
-      if (ev.status === 'failed') {
-        const b = document.createElement('button'); b.className = 'ghost'; b.textContent = 'Retry from here';
-        b.onclick = () => start({ job: current.job, dir: current.dir, flow: current.flow, from: current.steps[ev.index].name, skills: current.skills });
-        el.append(b);
-      }
+        runInfo.startedAt[ev.index] = ev.at;
+        runTimer = setInterval(() => { runInfo.times[ev.index] = Date.now() - ev.at; const t = $('t' + ev.index); if (t) t.textContent = fmt(runInfo.times[ev.index]); }, 1000);
+      } else runInfo.times[ev.index] = ev.at - (runInfo.startedAt[ev.index] ?? ev.at);
+      renderTop(); renderChat();
+      if (ev.status !== 'running' && runInfo.project === session?.project) refreshTree().then(refreshPreview);
     },
     log(ev) {
       const l = $('log'), atBottom = l.scrollHeight - l.scrollTop - l.clientHeight < 40;
       l.textContent += ev.text;
       if (atBottom) l.scrollTop = l.scrollHeight;
+      if (tab !== 'output') $('logCount').textContent = '•';
     },
     done(ev) {
-      $('run').disabled = false;
-      $('msg').className = ev.ok ? 'ok' : 'err';
-      $('msg').textContent = ev.ok ? `Done. Saved in ${current.dir}` : 'Stopped at a failed step. Fix it and retry from that step.';
-      $('results').hidden = false;
-      $('files').innerHTML = ev.files.map(f => `<a href="/files/${encodeURIComponent(f)}" target="_blank">${esc(f)}</a>`).join('') +
-        '<button class="ghost" id="open">Open folder</button>';
-      $('open').onclick = () => fetch('/api/open-folder', { method: 'POST' });
-      const thumb = ev.files.find(f => /^thumbnail\.(png|jpe?g)$/i.test(f));
-      $('thumb').hidden = !thumb;
-      if (thumb) $('thumb').src = `/files/${thumb}?t=${Date.now()}`;
+      if (!runInfo) return;
+      clearInterval(runTimer);
+      Object.assign(runInfo, { running: false, ok: ev.ok, stopped: ev.stopped });
+      renderTop(); renderChat();
+      if (ev.project === session?.project) refreshTree().then(refreshPreview);
     },
+    files(ev) { if (ev.project === session?.project) refreshTree().then(refreshPreview); },
   };
-  new EventSource('/api/events').onmessage = e => { const ev = JSON.parse(e.data); handlers[ev.type]?.(ev); };
+  document.querySelector('[data-tab=output]').addEventListener('click', () => $('logCount').textContent = '');
+
+  // ---------- Start ----------
+  async function boot() {
+    cfg ??= await api('/api/config');
+    await refreshSessions();
+    const want = store.get('session');
+    const id = sessions.find(s => s.id === want)?.id ?? sessions[0]?.id;
+    if (id) await openSession(id); else await newChat();
+  }
+  window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+  boot().then(() => {
+    showTab(tab);
+    new EventSource('/api/events').onmessage = e => { const ev = JSON.parse(e.data); H[ev.type]?.(ev); };
+  }).catch(e => toast(e.message, true));
 </script>
 </body>
 </html>

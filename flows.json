@@ -1,5 +1,7 @@
 {
+  "chat": { "agent": "sonnet" },
   "agents": {
+    "sonnet": { "cli": "claude", "model": "claude-sonnet-5-5" },
     "fable": { "cli": "claude", "model": "claude-fable-5-2", "permissionMode": "acceptEdits" },
     "opus":  { "cli": "claude", "model": "claude-opus-5-5",  "permissionMode": "acceptEdits" },
     "sol":   { "cli": "codex",  "model": "gpt-6.2-sol" },
@@ -7,6 +9,7 @@
   },
   "flows": {
     "game": {
+      "about": "Games of any kind: plan, build, an independent review by a different AI, and a thumbnail image.",
       "match": ["game"],
       "steps": [
         { "name": "plan", "agent": "fable", "task": "You are the planner. Design and structure this game: core loop, controls, screens, art style, tech stack, and the exact file structure. Write it all to PLAN.md in this folder. Do not write any game code." },
@@ -16,6 +19,7 @@
       ]
     },
     "default": {
+      "about": "Everything that is not a game (apps, sites, scripts, tools): plan, then build.",
       "match": [],
       "steps": [
         { "name": "plan", "agent": "fable", "task": "You are the planner. Plan and structure this job and write the plan to PLAN.md in this folder. Do not implement anything." },

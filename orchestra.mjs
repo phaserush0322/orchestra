@@ -4,7 +4,7 @@
 // Usage: node orchestra.mjs "make a snake game" --dir ./snake [--flow game] [--from code] [--skills a,b] [--dry]
 // Project rules are read from <dir>/RULES.md automatically.
 // The desktop UI (server.mjs) uses the same functions.
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 import { readFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -76,10 +76,19 @@ export function planRun(job, flowName, from) {
   return { flow, steps };
 }
 
+// Stops a running agent and everything it started (the shell wraps the CLI, so kill the whole tree).
+export function killTree(child) {
+  if (!child || child.exitCode !== null) return;
+  if (process.platform === 'win32') execFile('taskkill', ['/pid', String(child.pid), '/T', '/F'], () => {});
+  else child.kill('SIGTERM');
+}
+
 // Runs one step; streams the agent's output to onData; resolves with the exit code.
-export function runStep(step, job, dir, onData, extra) {
+// onChild receives the process so the caller can stop it.
+export function runStep(step, job, dir, onData, extra, onChild) {
   return new Promise(done => {
     const p = spawn(command(config.agents[step.agent]), { shell: true, cwd: dir });
+    onChild?.(p);
     p.stdout.on('data', onData);
     p.stderr.on('data', onData);
     p.on('error', e => { onData(`\n${e.message}\n`); done(1); });
