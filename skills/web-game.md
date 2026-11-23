@@ -1,0 +1,5 @@
+- Browser games run from a single index.html opened directly: no build tools, no npm, no external CDNs.
+- Game loop uses requestAnimationFrame with delta time, so speed is the same on 60Hz and 144Hz screens.
+- Support keyboard (arrows + WASD) and touch (on-screen buttons or swipe) controls.
+- Always include a start screen, pause (P or Esc), game over screen with restart, and a saved best score (localStorage, wrapped in try/catch).
+- Canvas scales to the window and stays sharp on high-DPI screens.

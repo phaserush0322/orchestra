@@ -1,0 +1,26 @@
+{
+  "agents": {
+    "fable": { "cli": "claude", "model": "claude-fable-5-2", "permissionMode": "acceptEdits" },
+    "opus":  { "cli": "claude", "model": "claude-opus-5-5",  "permissionMode": "acceptEdits" },
+    "sol":   { "cli": "codex",  "model": "gpt-6.2-sol" },
+    "astra": { "cli": "codex",  "model": "gpt-6.2-astra", "args": ["-c", "features.image_generation=true"] }
+  },
+  "flows": {
+    "game": {
+      "match": ["game"],
+      "steps": [
+        { "name": "plan", "agent": "fable", "task": "You are the planner. Design and structure this game: core loop, controls, screens, art style, tech stack, and the exact file structure. Write it all to PLAN.md in this folder. Do not write any game code." },
+        { "name": "code", "agent": "opus", "task": "You are the developer. Read PLAN.md and implement the complete, playable game in this folder exactly as planned. Add a short README.md saying how to run it." },
+        { "name": "review", "agent": "sol", "task": "You are the reviewer, a second pair of eyes from a different AI. Read PLAN.md, RULES.md if present, and all the code. Check that the game is complete and playable, matches the plan, and follows the project rules and skills. Fix any bugs or rule violations directly in the code. Then write REVIEW.md: what you checked, what you fixed, and anything left that a human should look at." },
+        { "name": "thumbnail", "agent": "astra", "task": "You are the artist. Read PLAN.md and create an eye-catching thumbnail image for this game that matches its art style. Save it as thumbnail.png in this folder." }
+      ]
+    },
+    "default": {
+      "match": [],
+      "steps": [
+        { "name": "plan", "agent": "fable", "task": "You are the planner. Plan and structure this job and write the plan to PLAN.md in this folder. Do not implement anything." },
+        { "name": "code", "agent": "opus", "task": "You are the developer. Read PLAN.md and implement it completely in this folder." }
+      ]
+    }
+  }
+}

@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orchestra</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --line:#30363d; --text:#e6edf3; --muted:#8b949e;
+          --accent:#7c5cff; --ok:#3fb950; --run:#d29922; --bad:#f85149; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 "Segoe UI", system-ui, sans-serif;
+         height:100vh; display:grid; grid-template-columns:340px 1fr; }
+  aside { border-right:1px solid var(--line); padding:20px; display:flex; flex-direction:column; gap:14px; overflow:auto; }
+  main { display:flex; flex-direction:column; gap:16px; padding:20px; min-height:0; overflow:hidden; }
+  h1 { font-size:20px; margin:0; } h1 span { color:var(--accent); }
+  h2 { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 8px; }
+  label { display:flex; flex-direction:column; gap:6px; color:var(--muted); font-size:12px; }
+  textarea, input, select { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:10px; font:inherit; }
+  textarea { min-height:110px; resize:vertical; }
+  textarea:focus, input:focus, select:focus { outline:2px solid var(--accent); outline-offset:-1px; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:10px 14px; font:inherit; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  button.ghost { background:transparent; border:1px solid var(--line); color:var(--text); font-weight:500; padding:6px 10px; }
+  #agents > div { display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px solid var(--line); }
+  .agents code { color:var(--muted); }
+  #flows > div { padding:4px 0; color:var(--muted); } .flows b { color:var(--text); }
+  .steps { display:flex; gap:10px; align-items:stretch; flex-wrap:wrap; }
+  .step { flex:1; min-width:170px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  .step .top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .step b { text-transform:capitalize; }
+  .badge { font-size:11px; padding:2px 8px; border-radius:99px; border:1px solid var(--line); color:var(--muted); }
+  .step[data-s=running] { border-color:var(--run); } .step[data-s=running] .badge { color:var(--run); border-color:var(--run); }
+  .step[data-s=done] .badge { color:var(--ok); border-color:var(--ok); }
+  .step[data-s=failed] { border-color:var(--bad); } .step[data-s=failed] .badge { color:var(--bad); border-color:var(--bad); }
+  .agent { margin-top:6px; font-weight:600; } .model, .time { color:var(--muted); font-size:12px; }
+  .step button { margin-top:8px; }
+  .arrow { align-self:center; color:var(--muted); }
+  pre { flex:1; margin:0; min-height:120px; background:#010409; border:1px solid var(--line); border-radius:10px; padding:12px;
+        overflow:auto; white-space:pre-wrap; word-break:break-word; font:12px/1.5 Consolas, ui-monospace, monospace; color:#c9d1d9; }
+  .results { display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
+  .results img { max-height:140px; border-radius:8px; border:1px solid var(--line); }
+  .files { display:flex; flex-direction:column; gap:4px; } .files a { color:#a5b4fc; }
+  .hint { font-size:11px; color:var(--muted); margin-top:-8px; }
+  .skills-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; } .skills-head h2 { margin:0; }
+  #skills > div { display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid var(--line); }
+  #skills label { flex:1; flex-direction:row; align-items:center; gap:8px; color:var(--text); font-size:13px; cursor:pointer; }
+  #skills input { accent-color:var(--accent); }
+  .link { background:none; border:0; padding:0; color:#a5b4fc; font-weight:500; font-size:12px; }
+  #editor { display:flex; flex-direction:column; gap:8px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; margin-top:8px; }
+  #editor[hidden] { display:none; }
+  #editor textarea { min-height:140px; background:var(--bg); } #editor input { background:var(--bg); }
+  .row { display:flex; gap:8px; } .row .danger { margin-left:auto; color:var(--bad); }
+  .muted { color:var(--muted); } .err { color:var(--bad); } .ok { color:var(--ok); }
+  @media (max-width:800px) { body { grid-template-columns:1fr; height:auto; } aside { border-right:0; border-bottom:1px solid var(--line); } main { overflow:visible; } }
+</style>
+</head>
+<body>
+<aside>
+  <h1><span>&#9835;</span> Orchestra</h1>
+  <label>Job
+    <textarea id="job" placeholder="e.g. make a space shooter game"></textarea></label>
+  <label>Project folder
+    <input id="dir" placeholder="Auto: projects/&lt;job-name&gt;, or a full path"></label>
+  <label>Flow
+    <select id="flow"><option value="">Auto (pick by keywords)</option></select></label>
+  <label>Project rules
+    <textarea id="rules" style="min-height:80px" placeholder="Rules for this project, e.g.&#10;- Use TypeScript&#10;- Mobile-first, touch controls&#10;- No external libraries"></textarea></label>
+  <div class="hint">Saved as RULES.md in the project folder. Leave empty to keep the folder's existing rules.</div>
+  <section>
+    <div class="skills-head"><h2>Skills</h2><span><button class="link" id="uploadBtn">Upload .md</button>&nbsp;&nbsp;<button class="link" id="newSkill">+ New skill</button></span></div>
+    <input type="file" id="uploadSkill" accept=".md,.txt,text/markdown,text/plain" hidden>
+    <div id="skills"><span class="muted">No skills yet.</span></div>
+    <div id="editor" hidden>
+      <input id="skillName" placeholder="Skill name, e.g. pixel-art-style" aria-label="Skill name">
+      <textarea id="skillContent" placeholder="What should the agents know or do?&#10;e.g. Use a 16-color pixel palette, 32x32 sprites, crisp scaling (no blur)." aria-label="Skill content"></textarea>
+      <div class="row"><button id="saveSkill">Save skill</button><button class="ghost" id="cancelSkill">Cancel</button><button class="ghost danger" id="deleteSkill">Delete</button></div>
+    </div>
+  </section>
+  <button id="run">Run</button>
+  <div id="msg" class="muted" role="status"></div>
+  <section class="agents"><h2>Agents</h2><div id="agents"></div></section>
+  <section class="flows"><h2>Flows</h2><div id="flows"></div></section>
+  <p class="muted" style="font-size:12px;margin:0">Change who does what in <code>flows.json</code>, then restart Orchestra.</p>
+</aside>
+<main>
+  <section>
+    <h2 id="title">Steps</h2>
+    <div id="steps" class="steps"><span class="muted">Run a job to watch each agent take its turn.</span></div>
+  </section>
+  <section id="results" hidden>
+    <h2>Output</h2>
+    <div class="results">
+      <img id="thumb" hidden alt="Generated thumbnail">
+      <div class="files" id="files"></div>
+    </div>
+  </section>
+  <pre id="log" aria-label="Agent output"></pre>
+</main>
+<script>
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const fmt = ms => { const s = Math.round(ms / 1000); return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`; };
+  let current = null, timer = null;
+  const startedAt = {};
+
+  fetch('/api/config').then(r => r.json()).then(cfg => {
+    $('agents').innerHTML = Object.entries(cfg.agents).map(([n, a]) =>
+      `<div><span>${esc(n)}</span><code>${esc(a.model)}</code></div>`).join('');
+    for (const n of Object.keys(cfg.flows)) $('flow').add(new Option(n, n));
+    $('flows').innerHTML = Object.entries(cfg.flows).map(([n, f]) =>
+      `<div><b>${esc(n)}</b>: ${f.steps.map(s => `${esc(s.name)} &rarr; ${esc(s.agent)}`).join(', ')}` +
+      (f.match?.length ? ` <i>(job mentions: ${f.match.map(esc).join(', ')})</i>` : ' <i>(everything else)</i>') + '</div>').join('');
+  });
+
+  // --- Skills: tick the ones to apply; ticks are remembered on this computer.
+  const store = { get: () => { try { return JSON.parse(localStorage.getItem('orchestra.skills')) || []; } catch { return []; } },
+                  set: v => { try { localStorage.setItem('orchestra.skills', JSON.stringify(v)); } catch {} } };
+  let skills = [];
+  const ticked = () => [...document.querySelectorAll('#skills input:checked')].map(c => c.value);
+  async function loadSkills() {
+    skills = await fetch('/api/skills').then(r => r.json());
+    const on = store.get();
+    $('skills').innerHTML = skills.length ? skills.map((s, i) => `<div>
+        <label><input type="checkbox" value="${esc(s.name)}" ${on.includes(s.name) ? 'checked' : ''}>${esc(s.name)}</label>
+        <button class="link" data-edit="${i}">edit</button></div>`).join('')
+      : '<span class="muted">No skills yet. Add one to teach the agents your way of working.</span>';
+    $('skills').onchange = () => store.set(ticked());
+    $('skills').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => openEditor(skills[b.dataset.edit]));
+  }
+  function openEditor(skill) {
+    $('editor').hidden = false; $('deleteSkill').hidden = !skill;
+    $('skillName').value = skill?.name ?? ''; $('skillContent').value = skill?.content ?? '';
+    $('skillName').disabled = !!skill; (skill ? $('skillContent') : $('skillName')).focus();
+  }
+  async function skillCall(body) {
+    const r = await fetch('/api/skills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const res = await r.json();
+    if (!r.ok) { $('msg').className = 'err'; $('msg').textContent = res.error; return null; }
+    $('editor').hidden = true; $('msg').textContent = '';
+    return res;
+  }
+  $('newSkill').onclick = () => openEditor(null);
+  // Upload fills the editor so you can review the file before saving it as a skill.
+  $('uploadBtn').onclick = () => $('uploadSkill').click();
+  $('uploadSkill').onchange = async () => {
+    const f = $('uploadSkill').files[0];
+    if (!f) return;
+    openEditor(null);
+    $('skillName').value = f.name.replace(/\.(md|txt)$/i, '');
+    $('skillContent').value = await f.text();
+    $('uploadSkill').value = '';
+  };
+  $('cancelSkill').onclick = () => $('editor').hidden = true;
+  $('saveSkill').onclick = async () => {
+    const res = await skillCall({ name: $('skillName').value, content: $('skillContent').value });
+    if (res && !store.get().includes(res.name)) store.set([...store.get(), res.name]); // new skills start ticked
+    loadSkills();
+  };
+  $('deleteSkill').onclick = async () => {
+    if (!confirm(`Delete skill "${$('skillName').value}"?`)) return;
+    if (await skillCall({ name: $('skillName').value, delete: true })) loadSkills();
+  };
+  loadSkills();
+
+  async function start(body) {
+    $('msg').className = 'muted'; $('msg').textContent = 'Starting...';
+    const r = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) { $('msg').className = 'err'; $('msg').textContent = (await r.json()).error; }
+  }
+  $('run').onclick = () => start({ job: $('job').value, dir: $('dir').value, flow: $('flow').value, skills: ticked(), rules: $('rules').value });
+  $('job').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $('run').click(); });
+
+  const handlers = {
+    start(ev) {
+      current = ev; clearInterval(timer);
+      $('run').disabled = true; $('log').textContent = ''; $('results').hidden = true;
+      $('msg').className = 'muted';
+      $('msg').textContent = `Running in ${ev.dir}\nSkills: ${ev.skills?.join(', ') || 'none'} | Project rules: ${ev.hasRules ? 'RULES.md' : 'none'}`;
+      $('msg').style.whiteSpace = 'pre-line';
+      $('title').textContent = `Steps - flow "${ev.flow}"`;
+      $('steps').innerHTML = ev.steps.map((s, i) => `${i ? '<span class="arrow">&rarr;</span>' : ''}
+        <div class="step" id="s${i}" data-s="pending">
+          <div class="top"><b>${esc(s.name)}</b><span class="badge">waiting</span></div>
+          <div class="agent">${esc(s.agent)}</div><div class="model">${esc(s.model)}</div><div class="time"></div>
+        </div>`).join('');
+    },
+    step(ev) {
+      const el = $('s' + ev.index), time = el.querySelector('.time');
+      el.dataset.s = ev.status; el.querySelector('.badge').textContent = ev.status;
+      if (ev.status === 'running') {
+        startedAt[ev.index] = ev.at; clearInterval(timer);
+        const tick = () => time.textContent = fmt(Date.now() - ev.at); tick();
+        timer = setInterval(tick, 1000);
+      } else {
+        clearInterval(timer); time.textContent = fmt(ev.at - startedAt[ev.index]);
+      }
+      if (ev.status === 'failed') {
+        const b = document.createElement('button'); b.className = 'ghost'; b.textContent = 'Retry from here';
+        b.onclick = () => start({ job: current.job, dir: current.dir, flow: current.flow, from: current.steps[ev.index].name, skills: current.skills });
+        el.append(b);
+      }
+    },
+    log(ev) {
+      const l = $('log'), atBottom = l.scrollHeight - l.scrollTop - l.clientHeight < 40;
+      l.textContent += ev.text;
+      if (atBottom) l.scrollTop = l.scrollHeight;
+    },
+    done(ev) {
+      $('run').disabled = false;
+      $('msg').className = ev.ok ? 'ok' : 'err';
+      $('msg').textContent = ev.ok ? `Done. Saved in ${current.dir}` : 'Stopped at a failed step. Fix it and retry from that step.';
+      $('results').hidden = false;
+      $('files').innerHTML = ev.files.map(f => `<a href="/files/${encodeURIComponent(f)}" target="_blank">${esc(f)}</a>`).join('') +
+        '<button class="ghost" id="open">Open folder</button>';
+      $('open').onclick = () => fetch('/api/open-folder', { method: 'POST' });
+      const thumb = ev.files.find(f => /^thumbnail\.(png|jpe?g)$/i.test(f));
+      $('thumb').hidden = !thumb;
+      if (thumb) $('thumb').src = `/files/${thumb}?t=${Date.now()}`;
+    },
+  };
+  new EventSource('/api/events').onmessage = e => { const ev = JSON.parse(e.data); handlers[ev.type]?.(ev); };
+</script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+- Keep it simple: the smallest code that fully works, no unused features or "for later" code.
+- Clear names over comments; comment only the "why".
+- Handle errors where data could be lost; never swallow them silently.
+- Finish with a short README.md: what it is, how to run it, the controls or main commands.
