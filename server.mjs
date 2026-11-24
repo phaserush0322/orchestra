@@ -82,10 +82,12 @@ export function listDir(root, rel = '') {
 }
 
 // ---------- Events (Server-Sent Events to every open window) ----------
-let run = null; // { id, sessionId, project, dir, events, running, stopped, child }
+// Builds run in parallel, one per project: project -> { id, sessionId, project, dir, events, running, stopped, child }
+const runs = new Map();
+const runningRuns = () => [...runs.values()].filter(r => r.running);
 const clients = new Set();
 const broadcast = (ev) => { for (const c of clients) c.write(`data: ${JSON.stringify(ev)}\n\n`); };
-const emit = (ev) => { run.events.push(ev); broadcast(ev); };
+const emit = (r, ev) => { ev = { ...ev, runId: r.id, project: r.project }; r.events.push(ev); broadcast(ev); };
 
 // ---------- Chat sessions (saved as sessions/<id>.json) ----------
 const cache = new Map();
@@ -96,7 +98,10 @@ function loadSession(id) {
     const file = join(sessionsDir, `${id}.json`);
     if (!existsSync(file)) throw new Error('Unknown chat.');
     const s = JSON.parse(readFileSync(file, 'utf8'));
-    for (const m of s.messages) if (m.role === 'build' && m.status === 'running' && !(run?.running && run.id === m.runId)) m.status = 'interrupted';
+    // A build that was running when Orchestra stopped: Retry resumes from the step it was on.
+    for (const m of s.messages) if (m.role === 'build' && m.status === 'running' && !runningRuns().some(r => r.id === m.runId)) {
+      m.status = 'interrupted'; m.failedStep ??= m.step ?? null;
+    }
     cache.set(id, s);
   }
   return cache.get(id);
@@ -123,36 +128,38 @@ function newSession(project = null) {
 
 // ---------- Builds ----------
 function startRun({ job, project, flow, from, skills = [], steps = null, sessionId = null }) {
-  if (run?.running) throw new Error('A build is already running. Wait for it to finish or press Stop.');
-  const plan = planRun(job, flow || undefined, from || undefined, steps || undefined); // throws on bad flow/step
   const target = projectPath(project);
+  if (runs.get(project)?.running) throw new Error(`A build is already running in "${project}". Wait for it to finish or press Stop.`);
+  const plan = planRun(job, flow || undefined, from || undefined, steps || undefined); // throws on bad flow/step
   guidance(target, skills); // throws on an unknown skill before anything is written
   mkdirSync(target, { recursive: true });
   const extra = guidance(target, skills);
-  run = { id: randomUUID().slice(0, 8), sessionId, project, dir: target, events: [], running: true, stopped: false, child: null };
+  const run = { id: randomUUID().slice(0, 8), sessionId, project, dir: target, events: [], running: true, stopped: false, child: null };
+  runs.set(project, run);
   const session = sessionId ? loadSession(sessionId) : null;
   const card = { role: 'build', runId: run.id, status: 'running', flow: plan.flow, project, skills: extra.skills.map(s => s.name), brief: job, from: from || null, at: Date.now(),
     ...(steps && { steps: checkSteps(steps) }) }; // the full custom list, so Retry can resend it
   if (session) { session.messages.push(card); saveSession(session); }
-  emit({ type: 'start', runId: run.id, sessionId, project, job, flow: plan.flow, dir: target, skills: card.skills, hasRules: !!extra.rules,
+  emit(run, { type: 'start', sessionId, job, flow: plan.flow, dir: target, skills: card.skills, hasRules: !!extra.rules,
     steps: plan.steps.map(s => ({ name: s.name, agent: s.agent, model: config.agents[s.agent].model, cli: config.agents[s.agent].cli })) });
-  const thisRun = run;
   (async () => {
     let ok = true;
     for (const [i, step] of plan.steps.entries()) {
-      emit({ type: 'step', index: i, status: 'running', at: Date.now() });
-      const code = await runStep(step, job, target, d => emit({ type: 'log', text: String(d) }), extra, c => { thisRun.child = c; });
-      const status = thisRun.stopped ? 'stopped' : code === 0 ? 'done' : 'failed';
-      emit({ type: 'step', index: i, status, at: Date.now() });
+      card.step = step.name; // saved, so a build cut off by a restart can resume from here
+      if (session) saveSession(session);
+      emit(run, { type: 'step', index: i, status: 'running', at: Date.now() });
+      const code = await runStep(step, job, target, d => emit(run, { type: 'log', text: String(d) }), extra, c => { run.child = c; });
+      const status = run.stopped ? 'stopped' : code === 0 ? 'done' : 'failed';
+      emit(run, { type: 'step', index: i, status, at: Date.now() });
       if (status !== 'done') { ok = false; break; }
     }
-    thisRun.running = false; thisRun.child = null;
+    run.running = false; run.child = null;
     const files = readdirSync(target);
-    emit({ type: 'done', ok, stopped: thisRun.stopped, project, files });
+    emit(run, { type: 'done', ok, stopped: run.stopped, files });
     if (session) {
-      card.status = ok ? 'done' : thisRun.stopped ? 'stopped' : 'failed';
+      card.status = ok ? 'done' : run.stopped ? 'stopped' : 'failed';
       card.files = files.filter(f => !f.startsWith('.'));
-      card.failedStep = ok ? null : plan.steps[thisRun.events.filter(e => e.type === 'step' && e.status !== 'running').length - 1]?.name ?? null;
+      card.failedStep = ok ? null : card.step;
       saveSession(session);
     }
   })();
@@ -233,7 +240,7 @@ function chatTurn(s, text) {
     message: text, history: s.messages.slice(0, -1), project: s.project, mode, cwd,
     connectors: servers.filter(c => c.enabled && c.status === 'connected').map(c => c.name),
     files: s.project ? listFiles(cwd).filter(f => f.type === 'file').map(f => f.path) : [],
-    projects: listProjects(), skills: listSkills(), running: run?.running ? run.project : null,
+    projects: listProjects(), skills: listSkills(), running: runningRuns().map(r => r.project),
   });
   // Per-turn files for the CLI: permission rules, and the approval MCP server that asks the user.
   const settingsFile = writeRuntimeFile(`chat-${s.id}.settings.json`, { permissions: permissionRules({ alsoAllow: s.alwaysAllow ?? [] }) });
@@ -300,7 +307,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/config') return send(200, { ...config, previewPort: PREVIEW_PORT });
     if (p === '/api/events') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
-      for (const ev of run?.events ?? []) res.write(`data: ${JSON.stringify(ev)}\n\n`);
+      for (const r of runs.values()) for (const ev of r.events) res.write(`data: ${JSON.stringify(ev)}\n\n`);
       clients.add(res);
       req.on('close', () => clients.delete(res));
       return;
@@ -329,7 +336,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p === '/api/session') {
       const s = loadSession(body.id);
       if (body.delete) {
-        if (chats.has(s.id) || (run?.running && run.sessionId === s.id)) return send(409, { error: 'This chat is busy. Stop it first.' });
+        if (chats.has(s.id) || runningRuns().some(r => r.sessionId === s.id)) return send(409, { error: 'This chat is busy. Stop it first.' });
         rmSync(join(sessionsDir, `${s.id}.json`), { force: true }); cache.delete(s.id);
         broadcast({ type: 'session', id: s.id, deleted: true });
         return send(200, { ok: true });
@@ -389,7 +396,8 @@ const server = http.createServer(async (req, res) => {
       return send(200, { ok: true });
     }
     if (req.method === 'POST' && p === '/api/stop') {
-      if (run?.running) { run.stopped = true; killTree(run.child); }
+      const r = runs.get(body.project);
+      if (r?.running) { r.stopped = true; killTree(r.child); }
       return send(200, { ok: true });
     }
 
@@ -416,7 +424,7 @@ const server = http.createServer(async (req, res) => {
       return send(200, { ok: true });
     }
     if (req.method === 'POST' && p === '/api/open-folder') {
-      const dir = body.project ? projectPath(body.project) : run?.dir;
+      const dir = body.project ? projectPath(body.project) : null;
       if (dir) execFile('explorer', [dir]);
       return send(200, { ok: true });
     }

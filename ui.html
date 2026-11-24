@@ -396,7 +396,7 @@
     const tail = t.slice(t.lastIndexOf('<')); return tail && '<orchestra-run>'.startsWith(tail) ? t.slice(0, -tail.length) : t;
   };
 
-  let cfg = null, session = null, sessions = [], projects = [], tree = [], live = null, runInfo = null, runTimer = null;
+  let cfg = null, session = null, sessions = [], projects = [], tree = [], live = null, runs = {}, logProject;
 
   // ---------- Views ----------
   function showView(v) {
@@ -522,14 +522,14 @@
   // ---------- Chat rendering ----------
   const STATUS = { running: 'Building...', done: 'Build finished', failed: 'Build failed', stopped: 'Build stopped', interrupted: 'Build interrupted' };
   function buildHtml(m, i) {
-    const live = runInfo && runInfo.runId === m.runId && runInfo.running;
+    const r = Object.values(runs).find(x => x.runId === m.runId && x.running);
     let sub = m.steps
       ? `${m.steps.map(s => `${esc(s.name)} (${esc(s.agent)})`).join(' &rarr; ')} &middot; ${esc(m.project)}`
       : `${esc(m.flow)} flow &middot; ${esc(m.project)}`;
-    if (live) { const k = runInfo.status.indexOf('running'); if (k >= 0) sub += ` &middot; step ${k + 1}/${runInfo.steps.length}: ${esc(runInfo.steps[k].name)} (${esc(runInfo.steps[k].agent)})`; }
-    if (m.status === 'failed' && m.failedStep) sub += ` &middot; at "${esc(m.failedStep)}"`;
+    if (r) { const k = r.status.indexOf('running'); if (k >= 0) sub += ` &middot; step ${k + 1}/${r.steps.length}: ${esc(r.steps[k].name)} (${esc(r.steps[k].agent)})`; }
+    if (m.status !== 'running' && m.status !== 'done' && m.failedStep) sub += ` &middot; at "${esc(m.failedStep)}"`;
     const actions = m.status === 'running'
-      ? `<button class="ghost sm" data-act="output">Watch output</button><button class="stop sm" data-act="stop">Stop</button>`
+      ? `<button class="ghost sm" data-act="output">Watch output</button><button class="stop sm" data-act="stop" data-i="${i}">Stop</button>`
       : m.status === 'done'
         ? `<button class="sm" data-act="preview">Open preview</button><button class="ghost sm" data-act="code">View code</button>`
         : `<button class="ghost sm" data-act="retry" data-i="${i}">Retry${m.failedStep ? ` from ${esc(m.failedStep)}` : ''}</button><button class="ghost sm" data-act="output">See output</button>`;
@@ -586,7 +586,7 @@
     if (act === 'output') showTab('output');
     if (act === 'preview') showTab('preview');
     if (act === 'code') showTab('code');
-    if (act === 'stop') stopBuild();
+    if (act === 'stop') stopBuild(session.messages[b.dataset.i]?.project);
     if (act === 'retry') {
       const m = session.messages[b.dataset.i];
       try { await api('/api/run', { job: m.brief, project: m.project, flow: m.flow, from: m.failedStep || undefined, skills: m.skills, steps: m.steps, sessionId: session.id }); showTab('output'); }
@@ -620,17 +620,29 @@
   function renderTop() {
     const p = session?.project;
     $('ptitle').textContent = p || 'No project yet';
-    const r = runInfo;
-    const mine = r && r.project === p;
-    $('psub').textContent = r?.running ? (mine ? 'Building now' : `Building "${r.project}" in another chat`)
-      : p ? (mine && r ? (r.ok ? 'Last build finished' : r.stopped ? 'Last build stopped' : 'Last build failed') : 'Ready') : 'Describe what to build in the chat';
+    const r = p ? runs[p] : null; // this project's build; others run alongside it
+    const others = Object.values(runs).filter(x => x.running && x.project !== p).map(x => `"${x.project}"`);
+    const mine = r?.running ? 'Building now'
+      : r ? (r.ok ? 'Last build finished' : r.stopped ? 'Last build stopped' : 'Last build failed')
+      : p ? 'Ready' : 'Describe what to build in the chat';
+    $('psub').textContent = others.length ? `${mine} · also building ${others.join(', ')}` : mine;
     $('stopBuild').hidden = !r?.running;
     $('pipeline').innerHTML = r ? r.steps.map((s, i) => `${i ? '<span class="arrow">&rarr;</span>' : ''}
       <span class="pstep" data-s="${r.status[i]}" title="${esc(s.agent)} &middot; ${esc(s.model)}"><span class="n">${i + 1}</span>
         <span class="dot ${esc(s.cli)}"></span>${esc(s.name)}<small id="t${i}">${r.times[i] ? fmt(r.times[i]) : ''}</small></span>`).join('') : '';
     $('openFolder').disabled = !p;
+    if (logProject !== p) { // switched project: show that project's build output
+      logProject = p;
+      $('log').textContent = r?.log ?? ''; $('log').scrollTop = $('log').scrollHeight;
+      $('outTitle').textContent = p ? `Agent output: ${p}` : 'Agent output';
+    }
   }
-  async function stopBuild() { try { await api('/api/stop', {}); } catch (e) { toast(e.message, true); } }
+  // Running steps tick once a second, for the project on screen.
+  setInterval(() => {
+    const r = runs[session?.project]; if (!r?.running) return;
+    r.status.forEach((s, i) => { if (s === 'running') { r.times[i] = Date.now() - r.startedAt[i]; const t = $('t' + i); if (t) t.textContent = fmt(r.times[i]); } });
+  }, 1000);
+  async function stopBuild(project = session?.project) { try { await api('/api/stop', { project }); } catch (e) { toast(e.message, true); } }
   $('stopBuild').onclick = stopBuild;
   $('openFolder').onclick = () => session?.project && api('/api/open-folder', { project: session.project });
 
@@ -876,33 +888,32 @@
       else if (ev.kind === 'tool') { live ??= { text: '', tools: [] }; live.tools.push(ev.text); updateLive(); }
       else if (ev.kind === 'done') { live = null; setReplying(false); reloadSession(); }
     },
+    // Build events carry their project; each project's build is tracked on its own.
     start(ev) {
-      runInfo = { ...ev, status: ev.steps.map(() => 'pending'), times: [], startedAt: [], running: true };
-      $('log').textContent = ''; $('logCount').textContent = '';
-      $('outTitle').textContent = `Agent output: ${ev.project}`;
+      runs[ev.project] = { ...ev, status: ev.steps.map(() => 'pending'), times: [], startedAt: [], running: true, log: '' };
+      if (ev.project === session?.project) { logProject = undefined; $('logCount').textContent = ''; }
       renderTop(); renderChat();
     },
     step(ev) {
-      if (!runInfo) return;
-      runInfo.status[ev.index] = ev.status;
-      clearInterval(runTimer);
-      if (ev.status === 'running') {
-        runInfo.startedAt[ev.index] = ev.at;
-        runTimer = setInterval(() => { runInfo.times[ev.index] = Date.now() - ev.at; const t = $('t' + ev.index); if (t) t.textContent = fmt(runInfo.times[ev.index]); }, 1000);
-      } else runInfo.times[ev.index] = ev.at - (runInfo.startedAt[ev.index] ?? ev.at);
+      const r = runs[ev.project]; if (!r || r.runId !== ev.runId) return;
+      r.status[ev.index] = ev.status;
+      if (ev.status === 'running') r.startedAt[ev.index] = ev.at;
+      else r.times[ev.index] = ev.at - (r.startedAt[ev.index] ?? ev.at);
       renderTop(); renderChat();
-      if (ev.status !== 'running' && runInfo.project === session?.project) refreshTree().then(refreshPreview);
+      if (ev.status !== 'running' && ev.project === session?.project) refreshTree().then(refreshPreview);
     },
     log(ev) {
+      const r = runs[ev.project]; if (!r || r.runId !== ev.runId) return;
+      r.log += ev.text;
+      if (ev.project !== session?.project) return;
       const l = $('log'), atBottom = l.scrollHeight - l.scrollTop - l.clientHeight < 40;
       l.textContent += ev.text;
       if (atBottom) l.scrollTop = l.scrollHeight;
       if (tab !== 'output') $('logCount').textContent = '•';
     },
     done(ev) {
-      if (!runInfo) return;
-      clearInterval(runTimer);
-      Object.assign(runInfo, { running: false, ok: ev.ok, stopped: ev.stopped });
+      const r = runs[ev.project]; if (!r || r.runId !== ev.runId) return;
+      Object.assign(r, { running: false, ok: ev.ok, stopped: ev.stopped });
       renderTop(); renderChat();
       if (ev.project === session?.project) refreshTree().then(refreshPreview);
     },

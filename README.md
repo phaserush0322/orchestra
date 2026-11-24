@@ -38,7 +38,7 @@ The app works like a chat plus an IDE:
   - **Auto-accept edits**: file edits run directly; commands still ask.
   - **Full access**: everything runs without asking.
 - **Connectors** (plug icon): every MCP server your `claude` CLI can see: claude.ai connectors (like Astrocade), plugin servers and local ones. Switched-on connectors work in the chat and for the Claude build agents. **Sign in...** opens Claude Code in a new window; type `/mcp` there to sign in to a connector, then press **Refresh**.
-- **Builds**: the pipeline shows at the top (plan, code, review, ...). **Stop build** ends it. A failed or stopped build can be retried from the step that failed.
+- **Builds**: the pipeline for the project you're viewing shows at the top (plan, code, review, ...). Builds in different projects run at the same time, one per project, and the top bar lists the others. **Stop build** ends this project's build. A failed, stopped or interrupted build (for example, when Orchestra was closed mid-build) can be retried from the step it was on.
 - **Preview**: runs the project's `index.html`. It is served from port 4546, a separate origin, so a previewed page cannot use Orchestra's controls.
 - **Code**: a file explorer and the VS Code editor (Monaco). Edit any file and press Ctrl+S to save. Add a `RULES.md` to a project to give every agent project rules.
 - **Output**: the agents' live output.
@@ -66,12 +66,13 @@ Sonnet reads each request and sends it through the shortest process that does th
 | Request | What runs |
 |---|---|
 | New game | **game**: plan (Fable) → code (Opus) → review (Sol) → thumbnail (Astra) |
-| New e-commerce shop, dashboard, admin panel, booking app | **webapp**: plan → code → test (Sol) → security review (Astra) |
-| New landing page, portfolio, company site, blog | **website**: plan → code → review for mobile, accessibility and SEO (Sol) → images (Astra) |
+| New e-commerce shop, dashboard, admin panel, booking app | **webapp**: plan → design (designer) → code → test (Sol) → security review (Astra) |
+| New landing page, portfolio, company site, blog | **website**: plan → design (designer) → code → review for design, mobile, accessibility and SEO (Sol) → images (Astra) |
 | New backend, API, script, tool, system | **system**: plan → code → test (Sol) → review (Astra) |
 | Anything else that's new | **default**: plan → code → review (Sol) |
 | A preset that almost fits | The preset with steps added or removed. Sonnet says what it changed. |
 | A follow-up, such as a new color, layout, animation or a bug fix | Straight to **code (Opus)**, with no planning |
+| A redesign, or "make it look better" | **design (designer)** → **code (Opus)** |
 | "Do a security review" | Straight to **Astra** |
 | Tests or a code review | Straight to **Sol** |
 | New images, icons or a thumbnail | Straight to **Astra** |

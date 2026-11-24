@@ -47,7 +47,7 @@ export function parseRunBlock(text, { flows = config.flows, skills = [] } = {}) 
 }
 
 // What the chat agent knows each turn: its job, the team, the project, and the conversation so far.
-export function chatPrompt({ message, history = [], project = null, files = [], projects = [], skills = [], running = null, mode = 'ask', connectors = [], cwd = '' }) {
+export function chatPrompt({ message, history = [], project = null, files = [], projects = [], skills = [], running = [], mode = 'ask', connectors = [], cwd = '' }) {
   const flows = Object.entries(config.flows).map(([n, f]) =>
     `- ${n}: ${f.about ?? ''} Steps: ${f.steps.map(s => `${s.name} (${s.agent}, ${config.agents[s.agent]?.model})`).join(' -> ')}`).join('\n');
   const agents = Object.entries(config.agents).filter(([n]) => n !== (config.chat?.agent ?? 'sonnet'))
@@ -73,7 +73,8 @@ HOW YOU WORK
   1. NEW project or a BIG feature that needs design decisions: the full preset flow that fits (the flow list below), without "steps".
   2. A preset that almost fits: the preset flow plus a "steps" list with steps added or removed for this project. Say in your reply what you changed and why.
   3. A FOLLOW-UP on an existing project: only the step(s) it needs, sent straight to the right agent, skipping planning and anything else not needed. Examples:
-     - change colors, a look, layout, an animation, text, or fix a bug: [{"name":"code","agent":"opus",...}]
+     - a specific tweak (this color, this text, this animation, a bug): [{"name":"code","agent":"opus",...}]
+     - a redesign, a new look or feel, "make it look better / more premium", UX problems, a new page or screen: [{"name":"design","agent":"designer",...},{"name":"code","agent":"opus",...}] (the designer updates DESIGN.md, the developer applies it)
      - a security review: [{"name":"security","agent":"astra",...}]; a code review or tests: sol
      - new or better images, a thumbnail, icons: astra
      - a change that touches many parts or needs design decisions (a new system, a big rework): add a "plan" step (fable) first, then code
@@ -88,7 +89,7 @@ HOW YOU WORK
   - skills: the skills below that fit this job; [] if none fit.
   - project: for a new project, a new short folder name not in the existing list. To work on an existing project, use its exact name. Ignored when this chat already has a project.
 - Only start a build when the user clearly wants the work done. If they are asking, exploring, or you need an answer first (for example their own rules say to wait for their "go"), just reply and ask.
-- If a build is already running, do not start another one; tell them to wait or press Stop.
+- Builds in different projects run at the same time, but only one per project: if a build is already running in this chat's project, do not start another there; tell them to wait or press Stop.
 
 THE BUILD TEAM: preset flows
 ${flows}
@@ -105,7 +106,7 @@ ${connectors.length ? connectors.map(c => `- ${c}`).join('\n') : '(none enabled)
 WORKING FOLDER: ${cwd}
 THIS CHAT'S PROJECT: ${project ? `"${project}"` : 'none yet (a build will create one)'}
 ${project ? `Files: ${files.slice(0, 80).join(', ') || '(empty)'}${files.length > 80 ? ` and ${files.length - 80} more` : ''}` : `Existing projects: ${projects.join(', ') || '(none)'}`}
-BUILD STATUS: ${running ? `running "${running}"` : 'idle'}
+BUILDS RUNNING NOW: ${running.length ? running.map(p => `"${p}"`).join(', ') : 'none'}
 
 CONVERSATION SO FAR
 ${transcript || '(this is the first message)'}

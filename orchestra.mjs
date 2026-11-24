@@ -5,7 +5,7 @@
 // Project rules are read from <dir>/RULES.md automatically.
 // The desktop UI (server.mjs) uses the same functions.
 import { spawn, execFile } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,7 +36,10 @@ export function permissionRules({ forAgents = false, alsoAllow = [] } = {}) {
 export function writeRuntimeFile(name, data) {
   mkdirSync(runtimeDir, { recursive: true });
   const file = join(runtimeDir, name);
-  writeFileSync(file, JSON.stringify(data, null, 2));
+  // Parallel builds rewrite the same file: write aside, then swap in, so the CLI never reads half a file.
+  const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  writeFileSync(tmp, JSON.stringify(data, null, 2));
+  renameSync(tmp, file);
   return file;
 }
 

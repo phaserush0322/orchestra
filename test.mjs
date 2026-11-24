@@ -80,6 +80,13 @@ assert.throws(() => checkSteps([{ name: 'a', agent: 'opus', task: ' ' }]), /no t
 assert.throws(() => checkSteps(Array.from({ length: 9 }, (_, i) => ({ name: `s${i}`, agent: 'opus', task: 't' }))), /1 to 8/);
 assert.throws(() => checkSteps([]), /1 to 8/);
 assert.ok(chatPrompt({ message: 'hi' }).includes('- astra (gpt-6.2-astra)'), 'Sonnet sees the agents');
+// UI/UX: sites and apps get a designer between plan and code, and the coder follows DESIGN.md.
+for (const f of ['website', 'webapp']) {
+  const names = config.flows[f].steps.map(s => s.name);
+  assert.deepEqual(names.slice(0, 3), ['plan', 'design', 'code'], `${f} designs before coding`);
+  assert.match(config.flows[f].steps[2].task, /DESIGN\.md/, `${f} coder follows the design`);
+}
+assert.ok(chatPrompt({ message: 'hi' }).includes('- designer (claude-opus-5-5)'), 'Sonnet can send work to the designer');
 
 // Chat modes map to CLI permission modes; Ask first routes prompts to the app.
 assert.match(chatCommand(), /^claude -p --model claude-sonnet-5-5 .*--permission-mode manual/);
