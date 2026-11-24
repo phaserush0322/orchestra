@@ -37,7 +37,7 @@ for (const [name, flow] of Object.entries(config.flows))
   for (const s of flow.steps) assert.ok(config.agents[s.agent], `${name}/${s.name} uses unknown agent ${s.agent}`);
 // Chat: the build request is pulled out of the reply and checked against real flows and skills.
 import { parseRunBlock, chatPrompt, chatCommand, toolSummary } from './chat.mjs';
-import { inside, projectPath, parseMcpList } from './server.mjs';
+import { inside, projectPath, parseMcpList, isAllowedHost } from './server.mjs';
 import { mcpKey, PUBLISH_TOOLS, checkSteps } from './orchestra.mjs';
 
 // Connectors: parsed from "claude mcp list"; rule names match how Claude Code names MCP tools.
@@ -106,5 +106,11 @@ assert.ok(inside('C:\\p\\snake', 'src/main.js'));
 assert.throws(() => projectPath('../x'));
 assert.throws(() => projectPath('Bad Name'));
 assert.match(projectPath('neon-snake'), /projects[\\/]neon-snake$/);
+// Linked folders: only folders the user opened are allowed, matched without case like Windows does.
+assert.equal(projectPath('c:\\work\\shop', ['C:\\Work\\Shop']), 'C:\\Work\\Shop');
+assert.throws(() => projectPath('C:\\Windows', ['C:\\Work\\Shop']), /not a linked folder/);
+assert.throws(() => projectPath('C:\\Work\\Shop\\..\\Other', ['C:\\Work\\Shop']), /not a linked folder/);
+assert.ok(isAllowedHost('127.0.0.1:4545', 4545) && isAllowedHost('localhost:4545', 4545));
+assert.ok(!isAllowedHost('evil.example:4545', 4545) && !isAllowedHost(undefined, 4545), 'DNS rebinding blocked');
 
 console.log('all checks passed');

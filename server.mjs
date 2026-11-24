@@ -26,6 +26,7 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset
 
 // Only our own page may change anything: blocks other websites (and previewed pages) from POSTing here.
 export const isAllowedOrigin = (origin) => origin === ORIGIN || origin === `http://localhost:${PORT}`;
+export const isAllowedHost = (host, port) => host === `127.0.0.1:${port}` || host === `localhost:${port}`;
 
 // Used by the terminal flow and kept for old callers: a folder name under projects/, or a full path.
 export const projectDir = (job, dir) => {
@@ -41,13 +42,44 @@ export function inside(root, rel) {
   return !r || r.startsWith('..') || isAbsolute(r) ? null : file;
 }
 
-export function projectPath(name) {
+// A project is a folder under projects/ (by name) or a folder the user linked with "Open folder" (by full path).
+// Only linked folders are allowed, so the API can't be pointed at the rest of the disk.
+const linkedFolders = () => (loadSettings().folders ?? []).filter(f => typeof f === 'string' && isAbsolute(f));
+const sameDir = (a, b) => resolve(a).toLowerCase() === resolve(b).toLowerCase(); // Windows paths ignore case
+export function projectPath(name, folders = linkedFolders()) {
+  if (typeof name === 'string' && isAbsolute(name)) {
+    const linked = folders.find(f => sameDir(f, name));
+    if (!linked) throw new Error(`"${name}" is not a linked folder. Use "Open folder..." to add it.`);
+    return resolve(linked);
+  }
   if (!name || slug(name) !== name) throw new Error(`"${name}" is not a valid project name.`);
   return join(projectsRoot, name);
 }
 
-const listProjects = () => existsSync(projectsRoot)
-  ? readdirSync(projectsRoot, { withFileTypes: true }).filter(d => d.isDirectory() && slug(d.name) === d.name).map(d => d.name) : [];
+const listProjects = () => [
+  ...(existsSync(projectsRoot) ? readdirSync(projectsRoot, { withFileTypes: true }).filter(d => d.isDirectory() && slug(d.name) === d.name).map(d => d.name) : []),
+  ...linkedFolders().filter(f => existsSync(f)),
+];
+
+// Windows folder picker, shown on top of other windows. Resolves to the chosen path, or null if cancelled.
+const PICK = `[Console]::OutputEncoding = [Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms;
+$owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true };
+$d = New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description = 'Choose a project folder for Orchestra';
+if ($d.ShowDialog($owner) -eq 'OK') { $d.SelectedPath }`;
+const pickFolder = () => new Promise(done => execFile('powershell', ['-NoProfile', '-STA', '-Command', PICK],
+  { windowsHide: true, timeout: 600000 }, (err, out) => done(err ? { error: 'The folder picker could not open.' } : { path: String(out).trim() || null })));
+
+export function linkFolder(path) {
+  const raw = String(path ?? '').trim().replace(/^"|"$/g, ''); // pasted paths often come quoted
+  if (!isAbsolute(raw)) throw new Error('Give the full path of the folder, like C:\\Users\\you\\Projects\\my-app.');
+  const dir = resolve(raw);
+  if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`"${dir}" is not a folder on this computer.`);
+  const s = loadSettings();
+  const folders = (s.folders ?? []).filter(f => typeof f === 'string');
+  const known = folders.find(f => sameDir(f, dir));
+  if (!known) { s.folders = [...folders, dir]; saveSettings(s); }
+  return known ?? dir;
+}
 
 // Every file and folder in a project, for the explorer. Skips dependency and hidden folders.
 const SKIP = new Set(['node_modules', '.git']);
@@ -297,6 +329,8 @@ const server = http.createServer(async (req, res) => {
     res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
   };
   const p = url.pathname;
+  // Only answer to our own address: blocks DNS-rebinding pages from reading projects and chats.
+  if (!isAllowedHost(req.headers.host, PORT)) return send(403, { error: 'Forbidden host' });
   // The approval server is a local process, not a page: it proves itself with the per-start token.
   const internal = p === '/internal/approve' && req.headers['x-orchestra-token'] === TOKEN;
   if (req.method === 'POST' && !internal && !isAllowedOrigin(req.headers.origin)) return send(403, { error: 'Forbidden origin' });
@@ -403,6 +437,15 @@ const server = http.createServer(async (req, res) => {
 
     // Projects and files
     if (req.method === 'GET' && p === '/api/projects') return send(200, listProjects());
+    if (req.method === 'POST' && p === '/api/folders') {
+      const picked = body.pick ? await pickFolder() : { path: body.path };
+      if (picked.error) return send(400, { error: picked.error, pickerFailed: true });
+      if (!picked.path) return send(200, { cancelled: true });
+      const path = picked.path;
+      const project = linkFolder(path);
+      broadcast({ type: 'projects' });
+      return send(200, { project });
+    }
     if (req.method === 'GET' && p === '/api/tree') {
       const dir = projectPath(url.searchParams.get('project'));
       return send(200, existsSync(dir) ? listDir(dir, url.searchParams.get('dir') || '') : []);
@@ -444,6 +487,7 @@ const server = http.createServer(async (req, res) => {
 const preview = http.createServer((req, res) => {
   try {
     if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end(); }
+    if (!isAllowedHost(req.headers.host, PREVIEW_PORT)) { res.writeHead(403); return res.end(); }
     const parts = new URL(req.url, 'http://x').pathname.slice(1).split('/').map(decodeURIComponent);
     const [name, ...rest] = parts;
     serveFile(res, projectPath(name), rest.join('/') || 'index.html');

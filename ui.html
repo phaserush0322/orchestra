@@ -476,8 +476,22 @@
     projects = await api('/api/projects');
     const cur = session?.project ?? '';
     $('projectSel').innerHTML = `<option value="">None yet (a build creates one)</option>` +
-      [...new Set([...projects, ...(cur ? [cur] : [])])].map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+      [...new Set([...projects, ...(cur ? [cur] : [])])].map(p => `<option value="${esc(p)}" title="${esc(p)}">${esc(pname(p))}${isFolder(p) ? ' (folder)' : ''}</option>`).join('') +
+      `<option value="${OPEN}">Open folder...</option>`;
     $('projectSel').value = cur;
+  }
+  // Linked folders are full paths; show just the folder's name.
+  const OPEN = '__open_folder__';
+  const isFolder = p => /^[a-zA-Z]:[\\/]|^[\\/]/.test(p ?? '');
+  const pname = p => isFolder(p) ? p.split(/[\\/]/).filter(Boolean).pop() : p;
+  async function openFolder() {
+    let r = await api('/api/folders', { pick: true }).catch(e => ({ error: e.message }));
+    if (r.error) { // no picker: let them paste the path (VS Code: right-click the folder > Copy Path)
+      const path = prompt('Paste the full path of the folder (in VS Code: right-click the folder > Copy Path):');
+      if (!path) return null;
+      r = await api('/api/folders', { path });
+    }
+    return r.cancelled ? null : r.project;
   }
   async function openSession(id) {
     const prevProject = session?.project;
@@ -515,7 +529,16 @@
     try { await api('/api/session', { id: session.id, delete: true }); session = null; await boot(); } catch (e) { toast(e.message, true); }
   };
   $('projectSel').onchange = async () => {
-    try { await api('/api/session', { id: session.id, project: $('projectSel').value || null }); await reloadSession(); }
+    try {
+      let project = $('projectSel').value || null;
+      if (project === OPEN) {
+        $('projectSel').value = session.project ?? '';
+        project = await openFolder();
+        if (!project) return;
+        await refreshProjects();
+      }
+      await api('/api/session', { id: session.id, project }); await reloadSession();
+    }
     catch (e) { toast(e.message, true); $('projectSel').value = session.project ?? ''; }
   };
 
@@ -524,8 +547,8 @@
   function buildHtml(m, i) {
     const r = Object.values(runs).find(x => x.runId === m.runId && x.running);
     let sub = m.steps
-      ? `${m.steps.map(s => `${esc(s.name)} (${esc(s.agent)})`).join(' &rarr; ')} &middot; ${esc(m.project)}`
-      : `${esc(m.flow)} flow &middot; ${esc(m.project)}`;
+      ? `${m.steps.map(s => `${esc(s.name)} (${esc(s.agent)})`).join(' &rarr; ')} &middot; ${esc(pname(m.project))}`
+      : `${esc(m.flow)} flow &middot; ${esc(pname(m.project))}`;
     if (r) { const k = r.status.indexOf('running'); if (k >= 0) sub += ` &middot; step ${k + 1}/${r.steps.length}: ${esc(r.steps[k].name)} (${esc(r.steps[k].agent)})`; }
     if (m.status !== 'running' && m.status !== 'done' && m.failedStep) sub += ` &middot; at "${esc(m.failedStep)}"`;
     const actions = m.status === 'running'
@@ -553,7 +576,7 @@
     const sugs = session?.project
       ? ['Explain how this project works', 'What should I improve next?', 'Add a pause menu and sound toggle']
       : ['Make a neon snake game', 'Build a simple to-do app', 'What can Orchestra do?'];
-    return `<div class="welcome"><h2>${session?.project ? esc(session.project) : 'What do you want to build?'}</h2>
+    return `<div class="welcome"><h2>${session?.project ? esc(pname(session.project)) : 'What do you want to build?'}</h2>
       <p>Chat with Sonnet. Ask questions, or ask for something to be built and the agents will take it from there.</p>
       <div class="sugs">${sugs.map(s => `<button class="sug" data-sug="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>`;
   }
@@ -619,9 +642,9 @@
   // ---------- Top bar: project + build pipeline ----------
   function renderTop() {
     const p = session?.project;
-    $('ptitle').textContent = p || 'No project yet';
+    $('ptitle').textContent = p ? pname(p) : 'No project yet'; $('ptitle').title = p || '';
     const r = p ? runs[p] : null; // this project's build; others run alongside it
-    const others = Object.values(runs).filter(x => x.running && x.project !== p).map(x => `"${x.project}"`);
+    const others = Object.values(runs).filter(x => x.running && x.project !== p).map(x => `"${pname(x.project)}"`);
     const mine = r?.running ? 'Building now'
       : r ? (r.ok ? 'Last build finished' : r.stopped ? 'Last build stopped' : 'Last build failed')
       : p ? 'Ready' : 'Describe what to build in the chat';
@@ -634,7 +657,7 @@
     if (logProject !== p) { // switched project: show that project's build output
       logProject = p;
       $('log').textContent = r?.log ?? ''; $('log').scrollTop = $('log').scrollHeight;
-      $('outTitle').textContent = p ? `Agent output: ${p}` : 'Agent output';
+      $('outTitle').textContent = p ? `Agent output: ${pname(p)}` : 'Agent output';
     }
   }
   // Running steps tick once a second, for the project on screen.
@@ -917,6 +940,7 @@
       renderTop(); renderChat();
       if (ev.project === session?.project) refreshTree().then(refreshPreview);
     },
+    projects() { refreshProjects().catch(() => {}); },
     files(ev) { if (ev.project === session?.project) refreshTree().then(refreshPreview); },
     connectors() { if (!$('connView').hidden) loadConnectors(); },
     approval(ev) {

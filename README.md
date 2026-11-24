@@ -46,6 +46,14 @@ The app works like a chat plus an IDE:
 
 The editor and Markdown rendering load from cdnjs, so the Code tab needs internet. Without it, files open in a plain text box.
 
+## Work on your own folders (and with VS Code)
+
+Each chat works on one project. Besides new projects in `projects/`, it can work on **any folder on your computer**: in the chat's **Project** list choose **Open folder...** and pick the folder (or paste its path; in VS Code, right-click the folder > **Copy Path**). Linked folders are saved in `settings.json`; only folders you linked can be opened by the app.
+
+The chat, the build team, parallel builds, Preview and the Code tab then all work directly in that folder, so you can keep it open in VS Code at the same time. The agents edit your real files, so commit your work in git first: then you can review or undo their changes.
+
+To use Orchestra inside VS Code: run `node server.mjs --no-open` in VS Code's terminal, then **Ctrl+Shift+P** > **Simple Browser: Show** > `http://127.0.0.1:4545`.
+
 ## Run from the terminal
 
 ```
