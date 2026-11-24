@@ -338,6 +338,7 @@ const server = http.createServer(async (req, res) => {
     const body = req.method === 'POST' ? JSON.parse((await readBody(req)) || '{}') : null;
     if (internal) return send(200, await requestApproval(body));
     if (req.method === 'GET' && p === '/') return send(200, readFileSync(join(here, 'ui.html')), TYPES['.html']);
+    if (req.method === 'GET' && p === '/favicon.ico') return send(200, readFileSync(join(here, 'orchestra.ico')), TYPES['.ico']);
     if (p === '/api/config') return send(200, { ...config, previewPort: PREVIEW_PORT });
     if (p === '/api/events') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
@@ -494,12 +495,38 @@ const preview = http.createServer((req, res) => {
   } catch { res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('Not found'); }
 });
 
+// Opens Orchestra in its own window (Edge app mode: no address bar or tabs).
+function openWindow() {
+  if (process.platform !== 'win32' || process.argv.includes('--no-open')) return;
+  exec(`start "" msedge --app=${ORIGIN} --window-size=1400,900`, err => err && console.log('Could not open Edge. Open the address above in your browser.'));
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  preview.listen(PREVIEW_PORT, '127.0.0.1');
-  refreshConnectors(); // takes a while; the list updates in the app when it's done
+  // --app (how Orchestra.vbs starts it): runs without a console and quits by itself once
+  // no Orchestra window has been open for a minute and no build or chat reply is running.
+  const APP = process.argv.includes('--app');
+  const IDLE_MS = Number(process.env.ORCHESTRA_IDLE_MS) || 60000;
+  server.on('error', async (e) => {
+    if (e.code !== 'EADDRINUSE') throw e;
+    const ours = await fetch(`${ORIGIN}/api/config`).then(r => r.ok).catch(() => false);
+    if (!ours) { console.error(`Port ${PORT} is used by another program. Close it, or set ORCHESTRA_PORT to another port.`); process.exit(1); }
+    console.log(`Orchestra is already running at ${ORIGIN}; opening another window.`);
+    openWindow();
+    setTimeout(() => process.exit(0), 1500); // give "start" a moment to launch Edge
+  });
+  preview.on('error', (e) => console.error(`Preview port ${PREVIEW_PORT}: ${e.message}`));
   server.listen(PORT, '127.0.0.1', () => {
-    console.log(`Orchestra is running at ${ORIGIN}  (keep this window open; close it to stop)`);
-    if (process.platform === 'win32' && !process.argv.includes('--no-open'))
-      exec(`start "" msedge --app=${ORIGIN}`, err => err && console.log('Could not open Edge. Open the address above in your browser.'));
+    preview.listen(PREVIEW_PORT, '127.0.0.1');
+    refreshConnectors(); // takes a while; the list updates in the app when it's done
+    console.log(APP ? `Orchestra is running at ${ORIGIN}. It quits by itself after its windows are closed.`
+                    : `Orchestra is running at ${ORIGIN}  (keep this window open; close it to stop)`);
+    openWindow();
+    if (APP) {
+      let idleSince = Date.now();
+      setInterval(() => {
+        if (clients.size || chats.size || runningRuns().length) idleSince = Date.now();
+        else if (Date.now() - idleSince > IDLE_MS) { console.log('No window open and nothing running: quitting.'); process.exit(0); }
+      }, 2000);
+    }
   });
 }

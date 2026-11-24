@@ -22,13 +22,21 @@ No npm packages are needed.
 
 ## Run the app
 
-Double-click `Orchestra.cmd` on Windows, or run:
+**As an app (Windows):** run this once to add an **Orchestra** shortcut, with its icon, to your Desktop and Start menu:
+
+```
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+Then open Orchestra like any app. It starts without a console window and opens in its own window (Edge app mode). It quits by itself a minute after you close its last window, but never while a build or a chat reply is still running. Opening it again while it runs just opens another window. To pin it, right-click the shortcut and choose **Pin to taskbar**. The server's output goes to `orchestra.log`. Run `install.ps1` again if you move the folder. You can also double-click `Orchestra.vbs` directly.
+
+**With a console** (to watch the server's output): double-click `Orchestra.cmd`, or run:
 
 ```
 node server.mjs
 ```
 
-It opens at http://127.0.0.1:4545. On Windows it opens as an Edge app window; pass `--no-open` to skip that. Keep the console window open while you use it.
+It opens at http://127.0.0.1:4545, in an Edge app window on Windows; pass `--no-open` to skip that. Keep the console window open while you use it.
 
 The app works like a chat plus an IDE:
 
