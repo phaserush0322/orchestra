@@ -12,13 +12,14 @@ export const slug = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, 
 // itself (not the CLI's bypass mode), so publishing tools can still be held for the user.
 export const MODES = { ask: 'manual', edits: 'acceptEdits', full: 'acceptEdits' };
 
-export function chatCommand({ mode = 'ask', settingsFile, mcpConfigFile } = {}, agent = config.agents[config.chat?.agent ?? 'sonnet']) {
+export function chatCommand({ mode = 'ask', settingsFile, mcpConfigFile, addDirs = [] } = {}, agent = config.agents[config.chat?.agent ?? 'sonnet']) {
   if (!agent || agent.cli !== 'claude') throw new Error('The chat agent must use the claude CLI (see "chat" in flows.json).');
   // Nothing saved by the CLI: the server keeps the history itself.
   return `claude -p --model ${agent.model} --output-format stream-json --verbose --include-partial-messages --no-session-persistence ` +
          `--permission-mode ${MODES[mode] ?? MODES.ask}` +
          (mcpConfigFile ? ` --mcp-config "${mcpConfigFile}" --permission-prompt-tool mcp__orchestra__approve` : '') +
-         (settingsFile ? ` --settings "${settingsFile}"` : '');
+         (settingsFile ? ` --settings "${settingsFile}"` : '') +
+         addDirs.map(d => ` --add-dir "${d}"`).join(''); // e.g. the chat's attachments, so Sonnet can open the images
 }
 
 const RUN_RE = /<orchestra-run>\s*([\s\S]*?)\s*<\/orchestra-run>/;
@@ -47,7 +48,7 @@ export function parseRunBlock(text, { flows = config.flows, skills = [] } = {}) 
 }
 
 // What the chat agent knows each turn: its job, the team, the project, and the conversation so far.
-export function chatPrompt({ message, history = [], project = null, files = [], projects = [], skills = [], running = [], mode = 'ask', connectors = [], cwd = '' }) {
+export function chatPrompt({ message, images = [], history = [], project = null, files = [], projects = [], skills = [], running = [], mode = 'ask', connectors = [], cwd = '' }) {
   const flows = Object.entries(config.flows).map(([n, f]) =>
     `- ${n}: ${f.about ?? ''} Steps: ${f.steps.map(s => `${s.name} (${s.agent}, ${config.agents[s.agent]?.model})`).join(' -> ')}`).join('\n');
   const agents = Object.entries(config.agents).filter(([n]) => n !== (config.chat?.agent ?? 'sonnet'))
@@ -56,7 +57,7 @@ export function chatPrompt({ message, history = [], project = null, files = [], 
     ? skills.map(s => `- ${s.name}: ${s.content.split('\n').find(l => l.trim())?.replace(/^#+\s*/, '').slice(0, 160) ?? ''}`).join('\n')
     : '(none)';
   const transcript = history.slice(-30).map(m => {
-    if (m.role === 'user') return `USER: ${m.text}`;
+    if (m.role === 'user') return `USER: ${m.text}${m.images?.length ? ` [attached ${m.images.length} image(s)]` : ''}`;
     if (m.role === 'assistant') return `YOU: ${m.text}`;
     if (m.role === 'build') return `[BUILD ${m.status.toUpperCase()}: flow "${m.flow}", project "${m.project}"${m.files ? `, files: ${m.files.join(', ')}` : ''}. Brief: ${m.brief.slice(0, 400)}]`;
     return '';
@@ -111,8 +112,12 @@ BUILDS RUNNING NOW: ${running.length ? running.map(p => `"${p}"`).join(', ') : '
 CONVERSATION SO FAR
 ${transcript || '(this is the first message)'}
 
-USER'S NEW MESSAGE
-${message}`;
+${images.length ? `IMAGES THE USER ATTACHED TO THIS MESSAGE
+${images.map(p => `- ${p}`).join('\n')}
+Open each one with the Read tool before you answer, and use what you see. They are in Orchestra's attachments folder, which the build team cannot see: to give one to the build team (for example a design reference or a screenshot of a bug), copy it into the project first (for example into references/) and name that file in the brief.
+
+` : ''}USER'S NEW MESSAGE
+${message || '(no text, only the images above)'}`;
 }
 
 // One short line describing a tool call, for the chat ("Bash git push", "Edit src/main.js").

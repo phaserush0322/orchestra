@@ -259,17 +259,18 @@ const pendingFor = (chat) => [...approvals.values()].filter(a => a.chat === chat
 
 // ---------- Chat turns ----------
 const chats = new Map(); // session id -> { child, stopped }
-function chatTurn(s, text) {
+function chatTurn(s, text, decodedImages = []) {
   if (chats.has(s.id)) throw new Error('Wait for the reply to finish, or press Stop.');
-  s.messages.push({ role: 'user', text, at: Date.now() });
-  if (!s.title) s.title = text.replace(/\s+/g, ' ').slice(0, 60);
+  const images = saveImages(s.id, decodedImages);
+  s.messages.push({ role: 'user', text, at: Date.now(), ...(images.length && { images }) });
+  if (!s.title) s.title = (text || 'Image').replace(/\s+/g, ' ').slice(0, 60);
   saveSession(s);
   const cwd = s.project ? projectPath(s.project) : projectsRoot;
   mkdirSync(cwd, { recursive: true });
   const mode = MODES[s.mode] ? s.mode : 'ask';
   const { servers } = connectorList();
   const prompt = chatPrompt({
-    message: text, history: s.messages.slice(0, -1), project: s.project, mode, cwd,
+    message: text, images: images.map(n => attachmentPath(s.id, n)), history: s.messages.slice(0, -1), project: s.project, mode, cwd,
     connectors: servers.filter(c => c.enabled && c.status === 'connected').map(c => c.name),
     files: s.project ? listFiles(cwd).filter(f => f.type === 'file').map(f => f.path) : [],
     projects: listProjects(), skills: listSkills(), running: runningRuns().map(r => r.project),
@@ -279,7 +280,7 @@ function chatTurn(s, text) {
   const mcpConfigFile = writeRuntimeFile(`chat-${s.id}.mcp.json`, { mcpServers: { orchestra: {
     type: 'stdio', command: process.execPath, args: [join(here, 'approve-mcp.mjs')],
     env: { ORCHESTRA_URL: ORIGIN, ORCHESTRA_TOKEN: TOKEN, ORCHESTRA_CHAT: s.id } } } });
-  const command = chatCommand({ mode, settingsFile, mcpConfigFile });
+  const command = chatCommand({ mode, settingsFile, mcpConfigFile, addDirs: images.length ? [join(attachmentsDir, s.id)] : [] });
   const turn = { child: null, stopped: false };
   chats.set(s.id, turn);
   const { child, done } = runChat({ cwd, prompt, command, onEvent: ev => broadcast({ type: 'chat', id: s.id, ...ev }) });
@@ -309,10 +310,36 @@ function chatTurn(s, text) {
 // ---------- HTTP ----------
 const readBody = (req) => new Promise((ok, fail) => {
   let b = '';
-  req.on('data', c => { b += c; if (b.length > 5e6) req.destroy(); });
+  req.on('data', c => { b += c; if (b.length > 70e6) { req.destroy(); fail(new Error('That request is too large.')); } }); // room for 6 images
   req.on('end', () => ok(b));
   req.on('error', fail);
 });
+
+// ---------- Images attached to chat messages (saved in attachments/<chat>/, not in the project or git) ----------
+const attachmentsDir = resolve(here, 'attachments');
+const IMAGE_TYPES = { png: 'png', jpeg: 'jpg', gif: 'gif', webp: 'webp' };
+// Checks pasted/dropped images ({ name, data: "data:image/png;base64,..." }) and decodes them.
+export function decodeImages(images = [], { max = 6, maxBytes = 10 * 1024 * 1024 } = {}) {
+  if (!Array.isArray(images)) throw new Error('Images must be a list.');
+  if (images.length > max) throw new Error(`Attach at most ${max} images per message.`);
+  return images.map((img, i) => {
+    const m = String(img?.data ?? '').match(/^data:image\/(png|jpeg|gif|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
+    if (!m) throw new Error(`Image ${i + 1} must be a PNG, JPG, GIF or WebP.`);
+    const buf = Buffer.from(m[2], 'base64');
+    if (buf.length > maxBytes) throw new Error(`Image ${i + 1} is larger than ${Math.round(maxBytes / 1048576)} MB.`);
+    return { ext: IMAGE_TYPES[m[1]], buf };
+  });
+}
+function saveImages(chatId, decoded) {
+  const dir = join(attachmentsDir, chatId);
+  mkdirSync(dir, { recursive: true });
+  return decoded.map(({ ext, buf }, i) => {
+    const name = `${Date.now()}-${i + 1}.${ext}`;
+    writeFileSync(join(dir, name), buf);
+    return name;
+  });
+}
+const attachmentPath = (chatId, name) => join(attachmentsDir, chatId, name);
 
 function serveFile(res, root, rel) {
   const file = inside(root, rel);
@@ -414,9 +441,16 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && p === '/api/chat') {
       const text = String(body.text ?? '').trim();
-      if (!text) return send(400, { error: 'Type a message first.' });
-      chatTurn(loadSession(body.id), text);
+      const images = decodeImages(body.images ?? []);
+      if (!text && !images.length) return send(400, { error: 'Type a message first.' });
+      chatTurn(loadSession(body.id), text, images);
       return send(200, { ok: true });
+    }
+    if (req.method === 'GET' && p === '/api/attachment') {
+      const chat = url.searchParams.get('chat'), name = url.searchParams.get('file') ?? '';
+      if (!validId(chat) || !/^[\w.-]+\.(png|jpg|gif|webp)$/.test(name)) return send(404, { error: 'Not found' });
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      return serveFile(res, join(attachmentsDir, chat), name);
     }
     if (req.method === 'POST' && p === '/api/chat/stop') {
       const t = chats.get(body.id);

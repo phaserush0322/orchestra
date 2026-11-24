@@ -37,7 +37,20 @@ for (const [name, flow] of Object.entries(config.flows))
   for (const s of flow.steps) assert.ok(config.agents[s.agent], `${name}/${s.name} uses unknown agent ${s.agent}`);
 // Chat: the build request is pulled out of the reply and checked against real flows and skills.
 import { parseRunBlock, chatPrompt, chatCommand, toolSummary } from './chat.mjs';
-import { inside, projectPath, parseMcpList, isAllowedHost } from './server.mjs';
+import { inside, projectPath, parseMcpList, isAllowedHost, decodeImages } from './server.mjs';
+
+// Images in chat: only real image types, a size and count limit; Sonnet gets read access and is told to look.
+const png = 'data:image/png;base64,' + Buffer.from('fake png bytes').toString('base64');
+assert.deepEqual(decodeImages([{ name: 'a.png', data: png }]).map(i => i.ext), ['png']);
+assert.equal(decodeImages([{ data: png.replace('image/png', 'image/jpeg') }])[0].ext, 'jpg');
+assert.throws(() => decodeImages([{ data: 'data:image/svg+xml;base64,PHN2Zz4=' }]), /PNG, JPG/, 'SVG (can hold scripts) rejected');
+assert.throws(() => decodeImages([{ data: 'data:text/html;base64,PGgxPg==' }]), /PNG, JPG/);
+assert.throws(() => decodeImages(Array(7).fill({ data: png })), /at most 6/);
+assert.throws(() => decodeImages([{ data: png }], { maxBytes: 4 }), /larger than/);
+assert.match(chatCommand({ addDirs: ['C:\\o\\attachments\\abc'] }), / --add-dir "C:\\o\\attachments\\abc"$/);
+const withImg = chatPrompt({ message: '', images: ['C:\\o\\attachments\\abc\\1.png'] });
+assert.ok(withImg.includes('- C:\\o\\attachments\\abc\\1.png') && withImg.includes('Read tool') && withImg.includes('only the images'));
+assert.ok(!chatPrompt({ message: 'hi' }).includes('IMAGES THE USER ATTACHED'));
 import { mcpKey, PUBLISH_TOOLS, checkSteps } from './orchestra.mjs';
 
 // Connectors: parsed from "claude mcp list"; rule names match how Claude Code names MCP tools.

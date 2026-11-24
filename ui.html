@@ -115,6 +115,20 @@
   #input { border:0; padding:4px 0; background:transparent; resize:none; min-height:24px; max-height:220px; box-shadow:none; line-height:1.5; }
   .box-foot { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:11.5px; color:var(--faint); }
   #send { padding:6px 14px; }
+  /* Images: previews above the input, and in sent messages */
+  .atts { display:flex; flex-wrap:wrap; gap:8px; padding-top:4px; }
+  .atts[hidden] { display:none; }
+  .att { position:relative; }
+  .att img { width:56px; height:56px; object-fit:cover; border-radius:8px; border:1px solid var(--line-2); display:block; }
+  .att button { position:absolute; top:-6px; right:-6px; width:20px; height:20px; padding:0; border-radius:50%; font-size:12px; line-height:1;
+                background:var(--panel-3); color:var(--text); border:1px solid var(--line-2); }
+  .foot-left { display:flex; align-items:center; gap:8px; min-width:0; }
+  #attachBtn { padding:3px 8px; font-size:15px; line-height:1; background:transparent; color:var(--muted); border:1px solid var(--line-2); }
+  #attachBtn:hover { color:var(--text); border-color:var(--accent); }
+  .composer.drag .box { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-bg); }
+  .bubble .imgs { display:flex; flex-wrap:wrap; gap:6px; }
+  .bubble .imgs + .text { margin-top:8px; }
+  .bubble .imgs img { max-width:180px; max-height:140px; border-radius:8px; display:block; }
 
   /* Permission mode + approvals */
   .proj select#modeSel { flex:none; width:auto; }
@@ -272,9 +286,11 @@
     <div id="messages" aria-live="polite"></div>
     <div class="composer">
       <div class="box">
-        <textarea id="input" rows="1" placeholder="Ask anything, or describe what to build..."></textarea>
-        <div class="box-foot"><span>Sonnet can run commands, edit files, use git and connectors.</span><button id="send">Send</button></div>
+        <div class="atts" id="atts" hidden aria-label="Images to send"></div>
+        <textarea id="input" rows="1" placeholder="Ask anything, or describe what to build... (paste or drop images too)"></textarea>
+        <div class="box-foot"><span class="foot-left"><button id="attachBtn" title="Attach images (or paste with Ctrl+V, or drag them here)" aria-label="Attach images">&#128206;</button><span>Sonnet can run commands, edit files, use git and connectors.</span></span><button id="send">Send</button></div>
       </div>
+      <input type="file" id="imgInput" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
     </div>
   </div>
   <!-- Skills view -->
@@ -564,7 +580,11 @@
       <div class="row">${actions}</div></div>`;
   }
   function msgHtml(m, i) {
-    if (m.role === 'user') return `<div class="msg user"><div class="bubble">${esc(m.text)}</div></div>`;
+    if (m.role === 'user') {
+      const src = f => f.startsWith('data:') ? f : `/api/attachment?chat=${encodeURIComponent(session.id)}&file=${encodeURIComponent(f)}`;
+      const imgs = m.images?.length ? `<div class="imgs">${m.images.map(f => `<a href="${esc(src(f))}" target="_blank" rel="noopener"><img src="${esc(src(f))}" alt="Attached image"></a>`).join('')}</div>` : '';
+      return `<div class="msg user"><div class="bubble">${imgs}${m.text ? `<div class="text">${esc(m.text)}</div>` : ''}</div></div>`;
+    }
     if (m.role === 'build') return buildHtml(m, i);
     return `<div class="msg ai"><div class="avatar" title="Sonnet">S</div><div class="ai-body">
       ${m.text ? `<div class="md">${md(m.text)}</div>` : ''}
@@ -630,14 +650,46 @@
   $('input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!replying) send(); } });
   $('send').onclick = () => replying ? api('/api/chat/stop', { id: session.id }).catch(() => {}) : send();
   async function send() {
-    const text = $('input').value.trim();
-    if (!text || !session) return;
-    $('input').value = ''; autosize();
-    session.messages.push({ role: 'user', text });
+    const text = $('input').value.trim(), images = pending;
+    if ((!text && !images.length) || !session) return;
+    if (images.some(i => !i.data)) return toast('The images are still loading. Try again in a moment.', true);
+    $('input').value = ''; autosize(); pending = []; renderAtts();
+    session.messages.push({ role: 'user', text, images: images.map(i => i.data) }); // local previews until the server's copy loads
     live = { text: '', tools: [] }; setReplying(true); renderChat(true);
-    try { await api('/api/chat', { id: session.id, text }); }
-    catch (e) { live = null; setReplying(false); session.messages.pop(); renderChat(); $('input').value = text; toast(e.message, true); }
+    try { await api('/api/chat', { id: session.id, text, images }); }
+    catch (e) { live = null; setReplying(false); session.messages.pop(); renderChat(); $('input').value = text; pending = images; renderAtts(); toast(e.message, true); }
   }
+
+  // ---------- Images: paste, drop or attach; sent with the next message ----------
+  const IMG_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'], MAX_IMGS = 6, MAX_MB = 10;
+  let pending = []; // { name, data: data URL }
+  function renderAtts() {
+    $('atts').hidden = !pending.length;
+    $('atts').innerHTML = pending.map((p, i) => `<div class="att"><img src="${p.data}" alt="${esc(p.name)}"><button data-rm="${i}" title="Remove" aria-label="Remove ${esc(p.name)}">&times;</button></div>`).join('');
+  }
+  function addImages(files) {
+    for (const f of files) {
+      if (!IMG_TYPES.includes(f.type)) { toast(`${f.name || 'That file'} is not a PNG, JPG, GIF or WebP image.`, true); continue; }
+      if (f.size > MAX_MB * 1048576) { toast(`${f.name} is larger than ${MAX_MB} MB.`, true); continue; }
+      if (pending.length >= MAX_IMGS) { toast(`You can attach up to ${MAX_IMGS} images per message.`, true); break; }
+      const slot = { name: f.name || 'pasted image', data: '' };
+      pending.push(slot);
+      const r = new FileReader();
+      r.onload = () => { slot.data = r.result; renderAtts(); };
+      r.readAsDataURL(f);
+    }
+  }
+  $('atts').onclick = e => { const b = e.target.closest('[data-rm]'); if (b) { pending.splice(+b.dataset.rm, 1); renderAtts(); } };
+  $('attachBtn').onclick = () => $('imgInput').click();
+  $('imgInput').onchange = () => { addImages($('imgInput').files); $('imgInput').value = ''; $('input').focus(); };
+  $('input').addEventListener('paste', e => {
+    const files = [...(e.clipboardData?.files ?? [])].filter(f => f.type.startsWith('image/'));
+    if (files.length) { e.preventDefault(); addImages(files); }
+  });
+  const composer = document.querySelector('.composer');
+  composer.addEventListener('dragover', e => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); composer.classList.add('drag'); } });
+  composer.addEventListener('dragleave', e => { if (!composer.contains(e.relatedTarget)) composer.classList.remove('drag'); });
+  composer.addEventListener('drop', e => { e.preventDefault(); composer.classList.remove('drag'); addImages(e.dataTransfer.files); $('input').focus(); });
 
   // ---------- Top bar: project + build pipeline ----------
   function renderTop() {
