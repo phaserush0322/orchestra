@@ -8,7 +8,7 @@ import { resolve, dirname, relative, isAbsolute, extname, join } from 'node:path
 import { fileURLToPath } from 'node:url';
 import { exec, execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { config, planRun, runStep, guidance, listSkills, skillName, skillsDir, killTree,
+import { config, planRun, checkSteps, runStep, guidance, listSkills, skillName, skillsDir, killTree,
   loadSettings, saveSettings, permissionRules, writeRuntimeFile, PUBLISH_TOOLS } from './orchestra.mjs';
 import { slug, chatPrompt, runChat, parseRunBlock, chatCommand, MODES, toolSummary } from './chat.mjs';
 
@@ -122,16 +122,17 @@ function newSession(project = null) {
 }
 
 // ---------- Builds ----------
-function startRun({ job, project, flow, from, skills = [], sessionId = null }) {
+function startRun({ job, project, flow, from, skills = [], steps = null, sessionId = null }) {
   if (run?.running) throw new Error('A build is already running. Wait for it to finish or press Stop.');
-  const plan = planRun(job, flow || undefined, from || undefined); // throws on bad flow/step
+  const plan = planRun(job, flow || undefined, from || undefined, steps || undefined); // throws on bad flow/step
   const target = projectPath(project);
   guidance(target, skills); // throws on an unknown skill before anything is written
   mkdirSync(target, { recursive: true });
   const extra = guidance(target, skills);
   run = { id: randomUUID().slice(0, 8), sessionId, project, dir: target, events: [], running: true, stopped: false, child: null };
   const session = sessionId ? loadSession(sessionId) : null;
-  const card = { role: 'build', runId: run.id, status: 'running', flow: plan.flow, project, skills: extra.skills.map(s => s.name), brief: job, from: from || null, at: Date.now() };
+  const card = { role: 'build', runId: run.id, status: 'running', flow: plan.flow, project, skills: extra.skills.map(s => s.name), brief: job, from: from || null, at: Date.now(),
+    ...(steps && { steps: checkSteps(steps) }) }; // the full custom list, so Retry can resend it
   if (session) { session.messages.push(card); saveSession(session); }
   emit({ type: 'start', runId: run.id, sessionId, project, job, flow: plan.flow, dir: target, skills: card.skills, hasRules: !!extra.rules,
     steps: plan.steps.map(s => ({ name: s.name, agent: s.agent, model: config.agents[s.agent].model, cli: config.agents[s.agent].cli })) });
@@ -257,7 +258,7 @@ function chatTurn(s, text) {
     if (parsed.run && !turn.stopped && !r.error) {
       try {
         const project = s.project ?? parsed.run.project;
-        startRun({ job: parsed.run.brief, project, flow: parsed.run.flow, skills: parsed.run.skills, sessionId: s.id });
+        startRun({ job: parsed.run.brief, project, flow: parsed.run.flow, skills: parsed.run.skills, steps: parsed.run.steps, sessionId: s.id });
         s.project = project;
       } catch (e) { msg.error = `Build not started: ${e.message}`; }
     }
@@ -421,6 +422,8 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && p.startsWith('/p/')) {
       const [name, ...rest] = p.slice(3).split('/').map(decodeURIComponent);
+      // Project files are untrusted: sandboxed, an opened HTML/SVG can't run as the app and call its API.
+      res.setHeader('Content-Security-Policy', 'sandbox');
       return serveFile(res, projectPath(name), rest.join('/'));
     }
     send(404, { error: 'Not found' });

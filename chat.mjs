@@ -3,7 +3,7 @@
 // mode, risky actions wait for the user's Allow in the app (through approve-mcp.mjs).
 // For bigger jobs it ends its reply with an <orchestra-run> block, which the server turns into a build.
 import { spawn } from 'node:child_process';
-import { config } from './orchestra.mjs';
+import { config, checkSteps } from './orchestra.mjs';
 
 export const slug = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
 
@@ -33,16 +33,25 @@ export function parseRunBlock(text, { flows = config.flows, skills = [] } = {}) 
   catch { return { text: clean, run: null, error: 'The build request was not valid JSON, so nothing was started.' }; }
   const brief = String(raw.brief ?? '').trim();
   if (!brief) return { text: clean, run: null, error: 'The build request had no brief, so nothing was started.' };
-  const flow = flows[raw.flow] ? raw.flow : (Object.keys(flows).find(n => flows[n].match?.some(w => brief.toLowerCase().includes(w))) ?? 'default');
+  let steps = null;
+  if (raw.steps != null) {
+    try { steps = checkSteps(raw.steps); }
+    catch (e) { return { text: clean, run: null, error: `The build request's steps were not valid (${e.message}), so nothing was started.` }; }
+  }
+  const flow = flows[raw.flow] ? raw.flow
+    : steps ? 'custom'
+    : (Object.keys(flows).find(n => flows[n].match?.some(w => brief.toLowerCase().includes(w))) ?? 'default');
   const known = new Set(skills);
   const picked = (Array.isArray(raw.skills) ? raw.skills : []).map(String).filter(s => known.has(s));
-  return { text: clean, run: { brief, flow, skills: picked, project: slug(raw.project) || slug(brief).slice(0, 30) || 'project' } };
+  return { text: clean, run: { brief, flow, skills: picked, project: slug(raw.project) || slug(brief).slice(0, 30) || 'project', ...(steps && { steps }) } };
 }
 
 // What the chat agent knows each turn: its job, the team, the project, and the conversation so far.
 export function chatPrompt({ message, history = [], project = null, files = [], projects = [], skills = [], running = null, mode = 'ask', connectors = [], cwd = '' }) {
   const flows = Object.entries(config.flows).map(([n, f]) =>
     `- ${n}: ${f.about ?? ''} Steps: ${f.steps.map(s => `${s.name} (${s.agent}, ${config.agents[s.agent]?.model})`).join(' -> ')}`).join('\n');
+  const agents = Object.entries(config.agents).filter(([n]) => n !== (config.chat?.agent ?? 'sonnet'))
+    .map(([n, a]) => `- ${n} (${a.model}): ${a.about ?? ''}`).join('\n');
   const skillList = skills.length
     ? skills.map(s => `- ${s.name}: ${s.content.split('\n').find(l => l.trim())?.replace(/^#+\s*/, '').slice(0, 160) ?? ''}`).join('\n')
     : '(none)';
@@ -60,20 +69,32 @@ HOW YOU WORK
 - Reply in the user's language (they may mix English and Tagalog). Keep replies short and clear; use Markdown.
 - Permission mode for this chat: ${{ ask: 'ASK FIRST: commands, file changes and other risky actions show the user an Allow/Deny card and wait for them', edits: 'AUTO-ACCEPT EDITS: file edits run directly; commands show the user an Allow/Deny card', full: 'FULL ACCESS: your actions run without asking' }[mode] ?? 'ASK FIRST'}. If the user denies something, do not try to get around it; ask what they want instead.
 - Before anything destructive or hard to undo (deleting files, force-pushing, overwriting work), say what you are about to do. Publish to the public (for example Astrocade publish_game) only when the user explicitly asks for it in this chat.
-- Small changes, questions, file and git work: do them yourself. Big builds (a new game or app, a major feature) go to the build team, because it plans, builds, reviews and makes art.
-- To hand work to the build team: say in one or two sentences what you are handing off, then end your reply with exactly one block like this (not inside a code fence):
+- Questions, file and git work, and tiny one-line edits: do them yourself. Real work on a project goes to the build team. Reviews (security or code), tests and images are never yours, even on a small project: always hand them to the specialist agent below, without reading the code first. Analyze each request and send it through the shortest process that does it well:
+  1. NEW project or a BIG feature that needs design decisions: the full preset flow that fits (the flow list below), without "steps".
+  2. A preset that almost fits: the preset flow plus a "steps" list with steps added or removed for this project. Say in your reply what you changed and why.
+  3. A FOLLOW-UP on an existing project: only the step(s) it needs, sent straight to the right agent, skipping planning and anything else not needed. Examples:
+     - change colors, a look, layout, an animation, text, or fix a bug: [{"name":"code","agent":"opus",...}]
+     - a security review: [{"name":"security","agent":"astra",...}]; a code review or tests: sol
+     - new or better images, a thumbnail, icons: astra
+     - a change that touches many parts or needs design decisions (a new system, a big rework): add a "plan" step (fable) first, then code
+     Add a review step after code only when the change is risky (logins, payments, data) or the user asks for it.
+- To hand work to the build team: say in one or two sentences what you are handing off and which steps will run, then end your reply with exactly one block like this (not inside a code fence):
 <orchestra-run>
-{"project": "short-kebab-name", "flow": "game", "skills": ["web-game"], "brief": "..."}
+{"project": "short-kebab-name", "flow": "game", "skills": ["web-game"], "brief": "...", "steps": [{"name": "code", "agent": "opus", "task": "..."}]}
 </orchestra-run>
-  - brief: a complete, self-contained job for the planner, in English. Include every requirement and decision from the conversation. For an existing project, say exactly what to change and what must stay the same.
-  - flow: the best flow for the job (list below).
+  - brief: a complete, self-contained job, in English. Include every requirement and decision from the conversation. For an existing project, say exactly what to change and what must stay the same.
+  - flow: the preset flow that fits best (list below), or "custom" for a follow-up made only of your own steps.
+  - steps: leave it out to run the preset's own steps. Otherwise 1 to 8 steps, in order; each has a short name, an agent from THE AGENTS list, and a task telling that agent its role and exactly what to do (it also sees the brief). Steps hand work to each other through files in the project folder.
   - skills: the skills below that fit this job; [] if none fit.
   - project: for a new project, a new short folder name not in the existing list. To work on an existing project, use its exact name. Ignored when this chat already has a project.
 - Only start a build when the user clearly wants the work done. If they are asking, exploring, or you need an answer first (for example their own rules say to wait for their "go"), just reply and ask.
 - If a build is already running, do not start another one; tell them to wait or press Stop.
 
-THE BUILD TEAM (flows)
+THE BUILD TEAM: preset flows
 ${flows}
+
+THE AGENTS (for "steps")
+${agents}
 
 SKILLS
 ${skillList}

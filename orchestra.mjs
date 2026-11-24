@@ -95,9 +95,25 @@ export function prompt(job, step, { rules = '', skills = [] } = {}) {
   return `${p}\n\nWork only inside the current folder.`;
 }
 
-export function planRun(job, flowName, from) {
-  const flow = pickFlow(job, flowName);
-  let steps = config.flows[flow].steps;
+// A step list written by the chat agent: 1-8 steps, known agents only, a unique name and a task each.
+export function checkSteps(steps) {
+  if (!Array.isArray(steps) || !steps.length || steps.length > 8) throw new Error('A custom flow needs 1 to 8 steps.');
+  const seen = new Set();
+  return steps.map(s => {
+    const name = String(s?.name ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30);
+    const task = String(s?.task ?? '').trim();
+    if (!name || seen.has(name)) throw new Error(`Every step needs its own name (got "${s?.name ?? ''}").`);
+    if (!Object.hasOwn(config.agents, String(s.agent))) throw new Error(`Step "${name}" uses unknown agent "${s.agent}".`);
+    if (!task) throw new Error(`Step "${name}" has no task.`);
+    seen.add(name);
+    return { name, agent: String(s.agent), task: task.slice(0, 4000) };
+  });
+}
+
+// customSteps (from the chat) replace the flow's own steps; the flow name is kept as a label.
+export function planRun(job, flowName, from, customSteps) {
+  const flow = customSteps ? (config.flows[flowName] ? flowName : 'custom') : pickFlow(job, flowName);
+  let steps = customSteps ? checkSteps(customSteps) : config.flows[flow].steps;
   if (from) {
     const i = steps.findIndex(s => s.name === from);
     if (i < 0) throw new Error(`No step "${from}" in flow "${flow}"`);

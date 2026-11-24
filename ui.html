@@ -61,6 +61,7 @@
   .proj select { flex:1; min-width:0; padding:4px 8px; font-size:12.5px; background:var(--bg); }
 
   #messages { flex:1; overflow:auto; padding:16px 14px 8px; display:flex; flex-direction:column; gap:14px; }
+  #messages > * { flex-shrink:0; } /* cards with overflow:hidden would otherwise shrink and get cut off */
   .msg.user { align-self:flex-end; max-width:88%; }
   .msg.user .bubble { background:var(--accent-bg); border:1px solid rgba(139,108,255,.35); padding:9px 13px; border-radius:14px 14px 4px 14px; white-space:pre-wrap; word-break:break-word; }
   .msg.ai { display:flex; gap:10px; align-items:flex-start; }
@@ -522,7 +523,9 @@
   const STATUS = { running: 'Building...', done: 'Build finished', failed: 'Build failed', stopped: 'Build stopped', interrupted: 'Build interrupted' };
   function buildHtml(m, i) {
     const live = runInfo && runInfo.runId === m.runId && runInfo.running;
-    let sub = `${esc(m.flow)} flow &middot; ${esc(m.project)}`;
+    let sub = m.steps
+      ? `${m.steps.map(s => `${esc(s.name)} (${esc(s.agent)})`).join(' &rarr; ')} &middot; ${esc(m.project)}`
+      : `${esc(m.flow)} flow &middot; ${esc(m.project)}`;
     if (live) { const k = runInfo.status.indexOf('running'); if (k >= 0) sub += ` &middot; step ${k + 1}/${runInfo.steps.length}: ${esc(runInfo.steps[k].name)} (${esc(runInfo.steps[k].agent)})`; }
     if (m.status === 'failed' && m.failedStep) sub += ` &middot; at "${esc(m.failedStep)}"`;
     const actions = m.status === 'running'
@@ -534,7 +537,7 @@
       <div class="build-head">${m.status === 'running' ? '<span class="spin"></span>' : ''}<b>${STATUS[m.status] ?? esc(m.status)}</b></div>
       <div class="build-sub">${sub}</div>
       ${m.skills?.length ? `<div class="chips">${m.skills.map(s => `<span class="chip">${esc(s)}</span>`).join('')}</div>` : ''}
-      <details><summary>Brief for the planner</summary><div class="brief">${esc(m.brief)}</div></details>
+      <details><summary>Brief</summary><div class="brief">${esc(m.brief)}</div></details>
       <div class="row">${actions}</div></div>`;
   }
   function msgHtml(m, i) {
@@ -586,7 +589,7 @@
     if (act === 'stop') stopBuild();
     if (act === 'retry') {
       const m = session.messages[b.dataset.i];
-      try { await api('/api/run', { job: m.brief, project: m.project, flow: m.flow, from: m.failedStep || undefined, skills: m.skills, sessionId: session.id }); showTab('output'); }
+      try { await api('/api/run', { job: m.brief, project: m.project, flow: m.flow, from: m.failedStep || undefined, skills: m.skills, steps: m.steps, sessionId: session.id }); showTab('output'); }
       catch (err) { toast(err.message, true); }
     }
   };

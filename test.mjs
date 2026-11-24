@@ -38,7 +38,7 @@ for (const [name, flow] of Object.entries(config.flows))
 // Chat: the build request is pulled out of the reply and checked against real flows and skills.
 import { parseRunBlock, chatPrompt, chatCommand, toolSummary } from './chat.mjs';
 import { inside, projectPath, parseMcpList } from './server.mjs';
-import { mcpKey, PUBLISH_TOOLS } from './orchestra.mjs';
+import { mcpKey, PUBLISH_TOOLS, checkSteps } from './orchestra.mjs';
 
 // Connectors: parsed from "claude mcp list"; rule names match how Claude Code names MCP tools.
 const mcp = parseMcpList([
@@ -62,6 +62,25 @@ assert.equal(parseRunBlock('Just an answer.').run, null);
 assert.equal(parseRunBlock('x <orchestra-run>{"brief":"make a todo app","flow":"nope"}</orchestra-run>').run.flow, 'default');
 assert.ok(parseRunBlock('x <orchestra-run>not json</orchestra-run>').error);
 assert.ok(parseRunBlock('x <orchestra-run>{"flow":"game"}</orchestra-run>').error);
+// Flow per project type (terminal keywords; the chat picks by description).
+assert.equal(pickFlow('build an e-commerce website for shoes'), 'webapp');
+assert.equal(pickFlow('make a portfolio website'), 'website');
+assert.equal(pickFlow('a backend for orders'), 'system');
+// Custom steps: Sonnet can send a follow-up straight to one agent, skipping plan and code.
+const direct = parseRunBlock('Sending it to Astra. <orchestra-run>{"flow":"custom","brief":"Security review of the checkout","steps":[{"name":"Security Review","agent":"astra","task":"Review the checkout"}]}</orchestra-run>');
+assert.equal(direct.run.flow, 'custom');
+assert.deepEqual(direct.run.steps, [{ name: 'security-review', agent: 'astra', task: 'Review the checkout' }]);
+assert.deepEqual(planRun('x', 'custom', undefined, direct.run.steps).steps.map(s => s.agent), ['astra']);
+const tweak = planRun('x', 'webapp', 'code', [{ name: 'plan', agent: 'fable', task: 'p' }, { name: 'code', agent: 'opus', task: 'c' }]);
+assert.deepEqual([tweak.flow, tweak.steps.map(s => s.name)], ['webapp', ['code']], 'preset label kept, retry from a custom step');
+assert.ok(parseRunBlock('x <orchestra-run>{"brief":"b","steps":[{"name":"a","agent":"hacker","task":"t"}]}</orchestra-run>').error, 'unknown agent rejected');
+assert.ok(parseRunBlock('x <orchestra-run>{"brief":"b","steps":[{"name":"a","agent":"toString","task":"t"}]}</orchestra-run>').error, 'prototype names are not agents');
+assert.throws(() => checkSteps([{ name: 'a', agent: 'opus', task: 't' }, { name: 'A', agent: 'sol', task: 't' }]), /own name/);
+assert.throws(() => checkSteps([{ name: 'a', agent: 'opus', task: ' ' }]), /no task/);
+assert.throws(() => checkSteps(Array.from({ length: 9 }, (_, i) => ({ name: `s${i}`, agent: 'opus', task: 't' }))), /1 to 8/);
+assert.throws(() => checkSteps([]), /1 to 8/);
+assert.ok(chatPrompt({ message: 'hi' }).includes('- astra (gpt-6.2-astra)'), 'Sonnet sees the agents');
+
 // Chat modes map to CLI permission modes; Ask first routes prompts to the app.
 assert.match(chatCommand(), /^claude -p --model claude-sonnet-5-5 .*--permission-mode manual/);
 assert.ok(!/bypassPermissions/.test(chatCommand({ mode: 'full' })), 'full access goes through the app so publishing can still ask');

@@ -59,6 +59,26 @@ node orchestra.mjs "make a snake game" --dir ./snake --skills web-game,clean-cod
 | `--skills a,b` | Apply skills from `skills/` |
 | `--dry` | Show which agent runs each step without running anything |
 
+## Flows: who does what
+
+Sonnet reads each request and sends it through the shortest process that does the job well:
+
+| Request | What runs |
+|---|---|
+| New game | **game**: plan (Fable) → code (Opus) → review (Sol) → thumbnail (Astra) |
+| New e-commerce shop, dashboard, admin panel, booking app | **webapp**: plan → code → test (Sol) → security review (Astra) |
+| New landing page, portfolio, company site, blog | **website**: plan → code → review for mobile, accessibility and SEO (Sol) → images (Astra) |
+| New backend, API, script, tool, system | **system**: plan → code → test (Sol) → review (Astra) |
+| Anything else that's new | **default**: plan → code → review (Sol) |
+| A preset that almost fits | The preset with steps added or removed. Sonnet says what it changed. |
+| A follow-up, such as a new color, layout, animation or a bug fix | Straight to **code (Opus)**, with no planning |
+| "Do a security review" | Straight to **Astra** |
+| Tests or a code review | Straight to **Sol** |
+| New images, icons or a thumbnail | Straight to **Astra** |
+| A follow-up that needs design decisions | **plan (Fable)** → **code (Opus)** |
+
+Questions, git work and tiny edits Sonnet does itself.
+
 ## Change who does what
 
 Edit `flows.json`, then restart the app:
